@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useState } from "react";
 import { formatRelative } from "@/lib/format";
 import { starProject } from "@/actions/projects";
-import { ProjectFormModal } from "@/components/projects/ProjectFormModal";
 import { DeleteProjectModal } from "./DeleteProjectModal";
 // import { type ProjectDoc } from "@/lib/models/Project";
 
@@ -18,7 +17,6 @@ const ACCENT_PRESETS: Record<string, { l: string }> = {
 };
 
 export function ProjectCard({ project }: { project: any }) {
-  const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const editingColor = project.color || "dodgerBlue";
@@ -49,11 +47,15 @@ export function ProjectCard({ project }: { project: any }) {
             >
               {project.starred ? "★" : "☆"}
             </button>
-            <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={() => setEditing(true)} aria-label="Edit">
+            <Link 
+              href={`/projects/${project.id}/settings`}
+              className="btn btn-ghost btn-icon btn-sm" 
+              aria-label="Edit"
+            >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
               </svg>
-            </button>
+            </Link>
             <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={() => setDeleting(true)} aria-label="Delete">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
@@ -96,14 +98,6 @@ export function ProjectCard({ project }: { project: any }) {
           </div>
         </div>
       </div>
-
-      {editing && (
-        <ProjectFormModal
-          mode="edit"
-          initial={project}
-          onClose={() => setEditing(false)}
-        />
-      )}
 
       {deleting && (
         <DeleteProjectModal

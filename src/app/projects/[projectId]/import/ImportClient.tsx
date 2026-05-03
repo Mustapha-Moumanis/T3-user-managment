@@ -8,6 +8,8 @@ import { applyMapping, parseCSVText, autoDetectMapping, validateAllRows, type Ma
 import { AddUserModal } from "@/components/AddUserModal";
 import { useTweaks, TweaksPanel, TweakSection, TweakToggle } from "@/components/TweaksPanel";
 
+import { AppShell } from "@/components/shell/AppShell";
+
 export function ImportClient({ project }: { project: any }) {
   const router = useRouter();
   const [screen, setScreen] = React.useState<"upload" | "review">("upload");
@@ -36,7 +38,13 @@ export function ImportClient({ project }: { project: any }) {
   };
 
   return (
-    <div style={{ padding: "32px 24px" }}>
+    <AppShell 
+      breadcrumbs={[
+        { label: "Projects", href: "/" }, 
+        { label: project.name, href: `/projects/${project.id}/import` },
+        { label: screen === "upload" ? "Upload" : "Review" }
+      ]}
+    >
       {screen === "upload" && (
         <UploadMapping
           rawData={rawData}
@@ -107,6 +115,6 @@ export function ImportClient({ project }: { project: any }) {
           />
         </TweakSection>
       </TweaksPanel>
-    </div>
+    </AppShell>
   );
 }
