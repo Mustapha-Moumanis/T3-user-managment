@@ -1,9 +1,6 @@
-export default function ProjectPage() {
-	return (
-		<main style={{ padding: 24 }}>
-			<h1>Project</h1>
-			<p>This route is reserved for future project details.</p>
-			<a href="/">Back to dashboard</a>
-		</main>
-	);
+import { redirect } from "next/navigation";
+
+export default async function ProjectRedirectPage({ params }: { params: Promise<{ projectId: string }> }) {
+  const { projectId } = await params;
+  redirect(`/projects/${projectId}/import`);
 }

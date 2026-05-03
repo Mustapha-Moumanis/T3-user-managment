@@ -1,13 +1,10 @@
 'use client';
 
 import React from 'react';
-import {
-  Box, Paper, Typography, Button, Stack, Alert, LinearProgress,
-  Divider, CircularProgress,
-} from '@mui/material';
 import { ReviewTable } from './ReviewTable';
 import { validateAllRows, type MappedRow } from '@/lib/validation';
-import type { Project } from '@/lib/projectStore';
+// import type { Project } from '@/lib/projectStore';
+type Project = any;
 
 const IMPORT_MODES = [
   { key: 'dryrun', label: 'Dry Run', desc: 'Validate only — no changes made', icon: '🔍' },
@@ -61,7 +58,6 @@ export function ReviewStep({ rows, fields, onBack, onRowUpdate, onDeleteSelected
     let processed = 0;
     const results: MappedRow[] = [...importedRows];
 
-    // Mark skipped rows upfront
     importedRows.forEach((r, i) => {
       if (importMode === 'valid_only' && Object.keys(r._errors ?? {}).length > 0) {
         results[i] = { ...r, _status: 'skipped' };
@@ -144,95 +140,96 @@ export function ReviewStep({ rows, fields, onBack, onRowUpdate, onDeleteSelected
   };
 
   return (
-    <Box sx={{ maxWidth: 1000, mx: 'auto', py: 2 }}>
-      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
-        <Box>
-          <Typography variant="h5" sx={{ mb: 0.5 }}>
+    <div className="max-w-[1000px] mx-auto py-[18px] px-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+        <div>
+          <div className="text-[22px] font-black tracking-[-0.02em] mb-1">
             {phase === 'done' ? 'Import Complete' : 'Review & Import'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
+          </div>
+          <div className="page-subtitle mt-0">
             {phase === 'done'
               ? `${summary?.successCount} imported · ${summary?.failedCount} failed · ${summary?.skippedCount} skipped`
               : `${importedRows.length} rows · ${validRows.length} valid · ${errorRows.length} with errors`}
-          </Typography>
-        </Box>
-        {phase === 'review' && (
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            {errorRows.length > 0 && (
-              <Alert severity="warning" sx={{ py: 0.25, px: 1.5 }}>
-                Fix {errorRows.length} error{errorRows.length > 1 ? 's' : ''} before full import
-              </Alert>
-            )}
-          </Stack>
+          </div>
+        </div>
+        {phase === 'review' && errorRows.length > 0 && (
+          <span className="badge badge-warn">
+            ⚠️ Fix {errorRows.length} error{errorRows.length > 1 ? 's' : ''} before full import
+          </span>
         )}
-      </Stack>
+      </div>
 
       {/* Import mode selector */}
       {phase === 'review' && (
-        <Box sx={{ display: 'flex', gap: 1.5, mb: 3, flexWrap: 'wrap' }}>
+        <div className="flex flex-wrap gap-3 mb-6">
           {IMPORT_MODES.map((mode) => (
-            <Paper
+            <div
               key={mode.key}
-              variant="outlined"
+              className={`card p-3.5 cursor-pointer flex-1 min-w-[180px] transition-colors duration-150 ${
+                importMode === mode.key
+                  ? 'border-[2px] border-[var(--accent)] bg-[var(--accent-soft)]'
+                  : 'border border-[var(--border)] bg-[var(--surface)]'
+              }`}
               onClick={() => setImportMode(mode.key)}
-              sx={{
-                p: 1.5, borderRadius: 2, cursor: 'pointer', flex: 1, minWidth: 180,
-                borderColor: importMode === mode.key ? 'primary.main' : 'divider',
-                borderWidth: importMode === mode.key ? 2 : 1,
-                bgcolor: importMode === mode.key ? 'primary.main' + '0D' : 'transparent',
-                transition: 'all 0.15s',
-                '&:hover': { borderColor: 'primary.light' },
-              }}
             >
-              <Typography variant="body2" sx={{ mb: 0.25 }}>
-                <span style={{ marginRight: 6 }}>{mode.icon}</span>
-                <strong>{mode.label}</strong>
-              </Typography>
-              <Typography variant="caption" color="text.secondary">{mode.desc}</Typography>
-            </Paper>
+              <div className="font-bold mb-1">
+                <span className="mr-1.5">{mode.icon}</span>
+                {mode.label}
+              </div>
+              <div className="text-xs text-[var(--text-3)]">{mode.desc}</div>
+            </div>
           ))}
-        </Box>
+        </div>
       )}
 
       {/* Progress bar (running) */}
       {phase === 'running' && (
-        <Paper variant="outlined" sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-          <Stack direction="row" spacing={2} sx={{ alignItems: 'center', mb: 1.5 }}>
-            <CircularProgress size={20} />
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+        <div className="card pad mb-6">
+          <div className="flex items-center gap-2.5 mb-3">
+            <span className="spin text-[18px]">⟳</span>
+            <span className="font-bold text-sm">
               {importMode === 'dryrun' ? 'Validating' : 'Importing'} rows... ({currentRow} / {importedRows.length})
-            </Typography>
-          </Stack>
-          <LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4 }} />
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-            {progress}% complete
-          </Typography>
-        </Paper>
+            </span>
+          </div>
+          <div className="h-2 rounded bg-[var(--border-2)] overflow-hidden">
+            <div
+              className="h-full bg-[var(--accent)] rounded transition-all duration-100 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <div className="mt-1.5 text-xs text-[var(--text-3)]">{progress}% complete</div>
+        </div>
       )}
 
-      {/* Summary */}
+      {/* Summary stat cards */}
       {phase === 'done' && summary && (
-        <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+        <div className="flex flex-wrap gap-3 mb-6">
           {[
-            { label: 'Total', val: summary.total, color: 'default' },
-            { label: 'Imported', val: summary.successCount, color: 'success' },
-            { label: 'Failed', val: summary.failedCount, color: 'error' },
-            { label: 'Skipped', val: summary.skippedCount, color: 'default' },
+            { label: 'Total', val: summary.total, cls: '' },
+            { label: 'Imported', val: summary.successCount, cls: 'badge-ok' },
+            { label: 'Failed', val: summary.failedCount, cls: 'badge-danger' },
+            { label: 'Skipped', val: summary.skippedCount, cls: '' },
           ].map((s) => (
-            <Paper key={s.label} variant="outlined" sx={{ p: 2, borderRadius: 2, flex: 1, minWidth: 100, textAlign: 'center' }}>
-              <Typography
-                variant="h4"
-                sx={{
-                  fontWeight: 800,
-                  color: s.color !== 'default' ? `${s.color}.main` : 'text.primary',
-                }}
+            <div
+              key={s.label}
+              className="card px-5 py-4 flex-1 min-w-[100px] text-center"
+            >
+              <div
+                className={`text-4xl font-black leading-[1.1] ${
+                  s.cls === 'badge-ok'
+                    ? 'text-[var(--ok)]'
+                    : s.cls === 'badge-danger'
+                    ? 'text-[var(--danger)]'
+                    : 'text-[var(--text)]'
+                }`}
               >
                 {s.val}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">{s.label}</Typography>
-            </Paper>
+              </div>
+              <div className="label mt-1">{s.label}</div>
+            </div>
           ))}
-        </Box>
+        </div>
       )}
 
       {/* Table */}
@@ -253,43 +250,42 @@ export function ReviewStep({ rows, fields, onBack, onRowUpdate, onDeleteSelected
         showImportStatus={phase !== 'review'}
       />
 
-      <Divider sx={{ my: 3 }} />
+      <div className="h-px bg-[var(--border)] my-6" />
 
       {/* Actions */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-        <Button variant="outlined" onClick={onBack} disabled={phase === 'running'}>← Back</Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button type="button" className="btn btn-secondary" onClick={onBack} disabled={phase === 'running'}>
+          ← Back
+        </button>
 
         {phase === 'review' && (
-          <Stack direction="row" spacing={1.5}>
-            <Button
-              variant="contained"
-              size="large"
-              onClick={handleImport}
-              disabled={importedRows.length === 0}
-              sx={{ minWidth: 180 }}
-            >
-              {importMode === 'dryrun'
-                ? '🔍 Run Dry Run'
-                : importMode === 'valid_only'
-                  ? `✅ Import ${validRows.length} Valid Rows`
-                  : `🚀 Import All ${importedRows.length} Rows`}
-            </Button>
-          </Stack>
+          <button
+            type="button"
+            className="btn btn-primary btn-lg"
+            onClick={handleImport}
+            disabled={importedRows.length === 0}
+          >
+            {importMode === 'dryrun'
+              ? '🔍 Run Dry Run'
+              : importMode === 'valid_only'
+                ? `✅ Import ${validRows.length} Valid Rows`
+                : `🚀 Import All ${importedRows.length} Rows`}
+          </button>
         )}
 
         {phase === 'done' && (
-          <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+          <div className="flex flex-wrap gap-2.5">
             {(summary?.failedCount ?? 0) > 0 && (
-              <Button variant="outlined" color="warning" onClick={handleRetryFailed}>
+              <button type="button" className="btn btn-secondary" onClick={handleRetryFailed}>
                 Retry {summary?.failedCount} Failed
-              </Button>
+              </button>
             )}
-            <Button variant="contained" color="success" onClick={onStartNew}>
+            <button type="button" className="btn btn-primary btn-lg" onClick={onStartNew}>
               Start New Import
-            </Button>
-          </Stack>
+            </button>
+          </div>
         )}
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 }

@@ -1,11 +1,6 @@
 'use client';
 
 import React from 'react';
-import {
-  Box, Paper, Typography, Button, Select, MenuItem,
-  FormControl, Table, TableHead, TableRow,
-  TableCell, TableBody, Chip, Stack, Alert, LinearProgress,
-} from '@mui/material';
 import { parseCSVText, autoDetectMapping, applyMapping, type RawRow, type Mapping } from '@/lib/validation';
 
 const CANONICAL_FIELDS = [
@@ -107,169 +102,176 @@ grace@acme.com,Grace Lee,+1-555-0108,manager,Product,U008`;
   };
 
   return (
-    <Box sx={{ maxWidth: 800, mx: 'auto', py: 2 }}>
-      <Typography variant="h5" sx={{ mb: 0.5 }}>Upload & Map Columns</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Upload a CSV or XLSX file, then verify the column mapping below.
-      </Typography>
+    <div className="max-w-[800px] mx-auto py-[18px] px-4">
+      <div className="mb-6">
+        <div className="text-[22px] font-black tracking-[-0.02em]">Upload &amp; Map Columns</div>
+        <div className="page-subtitle mt-0 mb-4">Upload a CSV file, then verify the column mapping below.</div>
+      </div>
 
       {/* Upload zone */}
       {!rawData && (
-        <Paper
-          variant="outlined"
+        <div
+          className={`card p-10 mb-5 text-center cursor-pointer border-dashed border-2 transition-colors duration-150 ${
+            dragging ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border-2)] bg-transparent'
+          }`}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          sx={{
-            p: 5, mb: 3, borderRadius: 2, textAlign: 'center', cursor: 'pointer',
-            borderStyle: 'dashed',
-            borderColor: dragging ? 'primary.main' : 'divider',
-            bgcolor: dragging ? 'action.hover' : 'transparent',
-            transition: 'all 0.2s',
-            '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' },
-          }}
         >
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" hidden onChange={handleInputChange} />
-          <UploadIcon />
-          <Typography variant="h6" sx={{ mt: 1.5, mb: 0.5 }}>Drop your file here</Typography>
-          <Typography variant="body2" color="text.secondary">CSV or XLSX — up to 10,000 rows</Typography>
-          <Button
-            variant="outlined" size="small" sx={{ mt: 2, mr: 1 }}
-            onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-          >
-            Browse File
-          </Button>
-          <Button variant="text" size="small" sx={{ mt: 2 }} onClick={(e) => { e.stopPropagation(); handleLoadDemo(); }}>
-            Load Demo Data
-          </Button>
-        </Paper>
+          <div className="flex justify-center mb-3">
+            <UploadIcon />
+          </div>
+          <div className="text-lg font-extrabold mb-1.5">Drop your file here</div>
+          <div className="page-subtitle mt-0 mb-4">CSV or XLSX — up to 10,000 rows</div>
+          <div className="flex justify-center gap-2">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+            >
+              Browse File
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={(e) => { e.stopPropagation(); handleLoadDemo(); }}
+            >
+              Load Demo Data
+            </button>
+          </div>
+        </div>
       )}
 
-      {loading && <LinearProgress sx={{ mb: 2, borderRadius: 4 }} />}
+      {/* Loading bar */}
+      {loading && (
+        <div className="h-1 rounded-sm bg-[var(--border-2)] mb-4 overflow-hidden">
+          <div className="skel h-full rounded-sm" />
+        </div>
+      )}
 
       {rawData && (
         <>
           {/* File info */}
-          <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
-            <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }} spacing={1.5}>
-              <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-                <FileIcon />
-                <Box>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{rawData.fileName ?? 'uploaded-file.csv'}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {rawData.rows.length} rows · {rawData.headers.length} columns detected
-                  </Typography>
-                </Box>
-              </Stack>
-              <Button size="small" variant="text" onClick={() => onFileLoad(null, {})}>Replace</Button>
-            </Stack>
-          </Paper>
+          <div className="card px-4 py-3.5 mb-3.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-[var(--text-3)]"><FileIcon /></span>
+              <div>
+                <div className="font-bold text-sm">{rawData.fileName ?? 'uploaded-file.csv'}</div>
+                <div className="text-xs text-[var(--text-3)]">
+                  {rawData.rows.length} rows · {rawData.headers.length} columns detected
+                </div>
+              </div>
+            </div>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onFileLoad(null, {})}>Replace</button>
+          </div>
 
           {/* Column mapping */}
-          <Paper variant="outlined" sx={{ p: 3, mb: 2, borderRadius: 2 }}>
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>COLUMN MAPPING</Typography>
+          <div className="card pad mb-3.5">
+            <div className="label mb-3">Column Mapping</div>
+
             {hasDupeMapping && (
-              <Alert severity="warning" sx={{ mb: 2 }}>
-                Some fields are mapped to multiple columns — each field should be mapped once.
-              </Alert>
+              <div className="badge badge-warn mb-3.5 flex gap-2">
+                ⚠️ Some fields are mapped to multiple columns — each field should be mapped once.
+              </div>
             )}
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 1.5, alignItems: 'center' }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>SOURCE COLUMN</Typography>
-              <Box />
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>MAPS TO</Typography>
+
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2.5">
+              <div className="label">Source Column</div>
+              <div />
+              <div className="label">Maps To</div>
 
               {rawData.headers.map((header) => {
                 const mappedTo = Object.entries(mapping).find(([, v]) => v === header)?.[0];
                 return (
                   <React.Fragment key={header}>
-                    <Paper variant="outlined" sx={{ px: 1.5, py: 0.75, borderRadius: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>{header}</Typography>
+                    {/* Source chip */}
+                    <div className="field-chip flex flex-wrap items-center gap-1.5 min-w-0">
+                      <span className="font-bold text-[13px]">{header}</span>
                       {previewRows.slice(0, 2).map((r, i) => (
-                        <Chip key={i} label={r[header] ?? '—'} size="small" variant="outlined" sx={{ fontSize: 10, height: 18 }} />
+                        <span key={i} className="text-[11px] text-[var(--text-3)] bg-[color-mix(in_srgb,var(--text)_6%,transparent)] rounded-md px-1.5 py-[1px]">
+                          {(r as Record<string, unknown>)[header] != null ? String((r as Record<string, unknown>)[header]) : '—'}
+                        </span>
                       ))}
-                    </Paper>
-                    <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>→</Typography>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        value={mappedTo ?? '_skip'}
-                        onChange={(e) => {
-                          const newMapping = { ...mapping };
-                          Object.keys(newMapping).forEach((k) => {
-                            if (newMapping[k] === header) delete newMapping[k];
-                          });
-                          if (e.target.value !== '_skip') newMapping[e.target.value] = header;
-                          onMappingChange(newMapping);
-                        }}
-                        displayEmpty
-                        sx={{ '& .MuiSelect-select': { py: 0.75 } }}
-                      >
-                        {CANONICAL_FIELDS.map((f) => (
-                          <MenuItem key={f.key} value={f.key}>
-                            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                              <span>{f.label}</span>
-                              {f.required && <Chip label="required" size="small" color="primary" sx={{ fontSize: 9, height: 16 }} />}
-                            </Stack>
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    </div>
+
+                    <span className="text-center text-[var(--text-3)] text-lg">→</span>
+
+                    {/* Mapping select */}
+                    <select
+                      className="select"
+                      value={mappedTo ?? '_skip'}
+                      onChange={(e) => {
+                        const newMapping = { ...mapping };
+                        Object.keys(newMapping).forEach((k) => {
+                          if (newMapping[k] === header) delete newMapping[k];
+                        });
+                        if (e.target.value !== '_skip') newMapping[e.target.value] = header;
+                        onMappingChange(newMapping);
+                      }}
+                    >
+                      {CANONICAL_FIELDS.map((f) => (
+                        <option key={f.key} value={f.key}>
+                          {f.label}{f.required ? ' *' : ''}
+                        </option>
+                      ))}
+                    </select>
                   </React.Fragment>
                 );
               })}
-            </Box>
-          </Paper>
+            </div>
+          </div>
 
-          {/* Preview */}
-          <Paper variant="outlined" sx={{ mb: 3, borderRadius: 2, overflow: 'hidden' }}>
-            <Box sx={{ px: 3, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-              <Typography variant="subtitle2" color="text.secondary">DATA PREVIEW (first 4 rows)</Typography>
-            </Box>
-            <Box sx={{ overflowX: 'auto' }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
+          {/* Preview table */}
+          <div className="card mb-5 overflow-hidden">
+            <div className="px-4 py-3 border-b border-[var(--border)]">
+              <div className="label">Data Preview (first 4 rows)</div>
+            </div>
+            <div className="overflow-x-auto">
+              <table>
+                <thead>
+                  <tr>
                     {Object.keys(mapping)
                       .filter((k) => mapping[k] && mapping[k] !== '_skip')
                       .map((field) => (
-                        <TableCell key={field}>
+                        <th key={field}>
                           {CANONICAL_FIELDS.find((f) => f.key === field)?.label ?? field}
-                        </TableCell>
+                        </th>
                       ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
+                  </tr>
+                </thead>
+                <tbody>
                   {previewRows.map((row, i) => {
                     const mapped = applyMapping([row], mapping)[0];
                     return (
-                      <TableRow key={i}>
+                      <tr key={i}>
                         {Object.keys(mapping)
                           .filter((k) => mapping[k] && mapping[k] !== '_skip')
                           .map((field) => (
-                            <TableCell key={field}>
-                              <Typography variant="caption">
-                                {(mapped as unknown as Record<string, unknown>)[field] != null
-                                  ? String((mapped as unknown as Record<string, unknown>)[field])
-                                  : <span style={{ opacity: 0.3 }}>—</span>}
-                              </Typography>
-                            </TableCell>
+                            <td key={field} className="text-[13px]">
+                              {(mapped as unknown as Record<string, unknown>)[field] != null
+                                ? String((mapped as unknown as Record<string, unknown>)[field])
+                                : <span className="opacity-30">—</span>}
+                            </td>
                           ))}
-                      </TableRow>
+                      </tr>
                     );
                   })}
-                </TableBody>
-              </Table>
-            </Box>
-          </Paper>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </>
       )}
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-        <Button variant="outlined" onClick={onBack}>← Back</Button>
-        <Button variant="contained" size="large" onClick={onNext} disabled={!isValid} sx={{ minWidth: 160 }}>
+      {/* Footer buttons */}
+      <div className="flex justify-between gap-2.5">
+        <button type="button" className="btn btn-secondary" onClick={onBack}>← Back</button>
+        <button type="button" className="btn btn-primary btn-lg" onClick={onNext} disabled={!isValid}>
           Review Data →
-        </Button>
-      </Box>
-    </Box>
+        </button>
+      </div>
+    </div>
   );
 }

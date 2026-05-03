@@ -1,11 +1,6 @@
 'use client';
 
 import React from 'react';
-import {
-  Box, Paper, Typography, IconButton, Collapse, Divider, Stack,
-  FormControl, FormControlLabel, RadioGroup, Radio, Switch,
-  TextField, Button, Tooltip,
-} from '@mui/material';
 
 const TWEAKS_STORAGE_KEY = 'uim_tweaks_v1';
 
@@ -43,24 +38,27 @@ export function TweaksPanel({ children }: TweaksPanelProps) {
   const [open, setOpen] = React.useState(true);
 
   return (
-    <Box sx={{ position: 'fixed', right: 16, bottom: 16, width: 320, zIndex: 1300 }}>
-      <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, boxShadow: '0 10px 30px rgba(0,0,0,0.15)' }}>
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="subtitle2" color="text.secondary">Tweaks</Typography>
-          <Tooltip title={open ? 'Hide panel' : 'Show panel'}>
-            <IconButton size="small" onClick={() => setOpen((o) => !o)}>
-              {open ? '▾' : '▸'}
-            </IconButton>
-          </Tooltip>
-        </Stack>
-        <Collapse in={open}>
-          <Divider sx={{ my: 1 }} />
-          <Box sx={{ maxHeight: '60vh', overflowY: 'auto', pr: 0.5 }}>
+    <div className="fixed right-4 bottom-4 w-80 z-50">
+      <div className="card p-3 shadow-[var(--shadow-lg)]">
+        <div className="flex items-center justify-between gap-2.5">
+          <div className="label">Tweaks</div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+          >
+            {open ? 'Hide' : 'Show'}
+          </button>
+        </div>
+
+        {open && (
+          <div className="mt-3 max-h-[60vh] overflow-auto">
             {children}
-          </Box>
-        </Collapse>
-      </Paper>
-    </Box>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -71,12 +69,10 @@ interface TweakSectionProps {
 
 export function TweakSection({ title, children }: TweakSectionProps) {
   return (
-    <Box sx={{ mb: 2 }}>
-      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, mb: 1, display: 'block' }}>
-        {title}
-      </Typography>
-      <Stack spacing={1.25}>{children}</Stack>
-    </Box>
+    <div className="mb-3.5">
+      <div className="label mb-2">{title}</div>
+      <div className="flex flex-col gap-2.5">{children}</div>
+    </div>
   );
 }
 
@@ -94,21 +90,23 @@ interface TweakRadioProps {
 
 export function TweakRadio({ label, value, options, onChange }: TweakRadioProps) {
   return (
-    <Box>
-      <Typography variant="body2" sx={{ mb: 0.5 }}>{label}</Typography>
-      <FormControl component="fieldset">
-        <RadioGroup value={value} onChange={(e) => onChange(e.target.value)}>
-          {options.map((opt) => (
-            <FormControlLabel
-              key={opt.value}
+    <div className="field">
+      <div className="label">{label}</div>
+      <div className="flex flex-col gap-2">
+        {options.map((opt) => (
+          <label key={opt.value} className="flex items-center gap-2.5 text-[var(--text-2)] text-sm">
+            <input
+              type="radio"
+              name={label}
               value={opt.value}
-              control={<Radio size="small" />}
-              label={opt.label}
+              checked={value === opt.value}
+              onChange={() => onChange(opt.value)}
             />
-          ))}
-        </RadioGroup>
-      </FormControl>
-    </Box>
+            <span>{opt.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -120,19 +118,19 @@ interface TweakColorProps {
 
 export function TweakColor({ label, value, onChange }: TweakColorProps) {
   return (
-    <Box>
-      <Typography variant="body2" sx={{ mb: 0.5 }}>{label}</Typography>
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-        <TextField
+    <div className="field">
+      <div className="label">{label}</div>
+      <div className="flex items-center gap-2.5">
+        <input
           type="color"
-          size="small"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          sx={{ width: 56 }}
+          aria-label={label}
+          className="w-11 h-8 p-0 border border-[var(--border-2)] rounded-[10px] bg-transparent"
         />
-        <Typography variant="caption" color="text.secondary">{value}</Typography>
-      </Stack>
-    </Box>
+        <span className="mono text-[13px] text-[var(--text-3)]">{value}</span>
+      </div>
+    </div>
   );
 }
 
@@ -144,10 +142,10 @@ interface TweakToggleProps {
 
 export function TweakToggle({ label, value, onChange }: TweakToggleProps) {
   return (
-    <FormControlLabel
-      control={<Switch size="small" checked={!!value} onChange={(e) => onChange(e.target.checked)} />}
-      label={label}
-    />
+    <label className="flex items-center justify-between gap-3">
+      <span className="text-[var(--text-2)] text-sm">{label}</span>
+      <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} />
+    </label>
   );
 }
 
@@ -158,8 +156,8 @@ interface TweakButtonProps {
 
 export function TweakButton({ label, onClick }: TweakButtonProps) {
   return (
-    <Button size="small" variant="outlined" onClick={onClick} fullWidth>
+    <button type="button" className="btn btn-secondary btn-sm w-full" onClick={onClick}>
       {label}
-    </Button>
+    </button>
   );
 }

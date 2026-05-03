@@ -1,13 +1,9 @@
 'use client';
 
 import React from 'react';
-import {
-  Dialog, DialogTitle, DialogContent, DialogActions,
-  Box, TextField, Button, FormControl, InputLabel, Select, MenuItem,
-  Typography, Alert, CircularProgress, Stack, Chip,
-} from '@mui/material';
 import { EMAIL_RE, PHONE_RE, VALID_ROLES } from '@/lib/validation';
-import type { Project } from '@/lib/projectStore';
+// import type { Project } from '@/lib/projectStore';
+type Project = any;
 
 interface FormState {
   email: string;
@@ -76,130 +72,155 @@ export function AddUserModal({ open, onClose, config }: AddUserModalProps) {
     onClose();
   };
 
-  const createEndpoint = config?.endpoints?.find((e) => e.id === 'create');
+  const createEndpoint = config?.endpoints?.find((e: any) => e.id === 'create');
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open]);
+
+  if (!open) return null;
 
   return (
-    <Dialog
-      open={open}
-      onClose={handleClose}
-      maxWidth="sm"
-      fullWidth
-      slotProps={{ paper: { sx: { borderRadius: 3 } } }}
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add single user"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) handleClose();
+      }}
     >
-      <DialogTitle sx={{ pb: 1 }}>
-        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>Add Single User</Typography>
-            {config?.projectName && (
-              <Typography variant="caption" color="text.secondary">via {config.projectName}</Typography>
+      <div className="card modal">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[18px] font-extrabold tracking-[-0.01em]">Add Single User</div>
+            {config?.projectName ? (
+              <div className="crumb">via <strong>{config.projectName}</strong></div>
+            ) : (
+              <div className="crumb">Create one user via the selected project</div>
             )}
-          </Box>
-          <Chip
-            label={config?.auth?.type?.toUpperCase() ?? 'BEARER'}
-            size="small"
-            variant="outlined"
-            color="primary"
-          />
-        </Stack>
-      </DialogTitle>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="badge badge-accent">{config?.auth?.type?.toUpperCase() ?? 'BEARER'}</span>
+            <button type="button" className="btn btn-ghost btn-icon" onClick={handleClose} aria-label="Close">
+              ✕
+            </button>
+          </div>
+        </div>
 
-      <DialogContent sx={{ pt: 2 }}>
-        {status === 'success' ? (
-          <Box sx={{ textAlign: 'center', py: 3 }}>
-            <Typography variant="h2" sx={{ mb: 1 }}>✅</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>User Created!</Typography>
-            <Typography variant="body2" color="text.secondary">
-              <strong>{form.name}</strong> ({form.email}) was added successfully.
-            </Typography>
-            <Button variant="contained" sx={{ mt: 3 }} onClick={handleClose}>Done</Button>
-          </Box>
-        ) : (
-          <Stack spacing={2}>
-            {status === 'error' && (
-              <Alert severity="error">{errorMsg}</Alert>
-            )}
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-              <TextField
-                label="Email *"
-                fullWidth
-                size="small"
-                value={form.email}
-                onChange={(e) => handleChange('email', e.target.value)}
-                error={!!errors.email}
-                helperText={errors.email}
-                disabled={status === 'loading'}
-                slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
-              />
-              <TextField
-                label="Full Name *"
-                fullWidth
-                size="small"
-                value={form.name}
-                onChange={(e) => handleChange('name', e.target.value)}
-                error={!!errors.name}
-                helperText={errors.name}
-                disabled={status === 'loading'}
-              />
-            </Box>
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-              <FormControl size="small" error={!!errors.role}>
-                <InputLabel>Role</InputLabel>
-                <Select
-                  value={form.role}
-                  label="Role"
-                  onChange={(e) => handleChange('role', e.target.value)}
-                  disabled={status === 'loading'}
-                >
-                  <MenuItem value=""><em>None</em></MenuItem>
-                  {VALID_ROLES.map((r) => (
-                    <MenuItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <TextField
-                label="Phone"
-                fullWidth
-                size="small"
-                value={form.phone}
-                onChange={(e) => handleChange('phone', e.target.value)}
-                error={!!errors.phone}
-                helperText={errors.phone}
-                placeholder="+1-555-0100"
-                disabled={status === 'loading'}
-              />
-            </Box>
-            <TextField
-              label="Department"
-              fullWidth
-              size="small"
-              value={form.department}
-              onChange={(e) => handleChange('department', e.target.value)}
-              disabled={status === 'loading'}
-              placeholder="Engineering, Marketing…"
-            />
+        <div className="mt-4">
+          {status === 'success' ? (
+            <div className="empty p-2.5">
+              <div className="text-4xl mb-1.5">✅</div>
+              <div className="text-lg font-black mb-1.5">User Created!</div>
+              <div className="text-[var(--text-2)] mb-3.5">
+                <strong>{form.name}</strong> <span className="mono">({form.email})</span> was added successfully.
+              </div>
+              <button type="button" className="btn btn-primary btn-lg" onClick={handleClose}>Done</button>
+            </div>
+          ) : (
+            <>
+              {status === 'error' && (
+                <div className="badge badge-danger mb-3 justify-center">
+                  {errorMsg}
+                </div>
+              )}
 
-            {config?.endpoints && (
-              <Alert severity="info" sx={{ fontSize: 12 }}>
-                Will POST to <code>{config.baseUrl}{createEndpoint?.path ?? '/users'}</code>
-              </Alert>
-            )}
-          </Stack>
-        )}
-      </DialogContent>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="field">
+                  <div className="label">Email *</div>
+                  <input
+                    className="input mono"
+                    value={form.email}
+                    onChange={(e) => handleChange('email', e.target.value)}
+                    disabled={status === 'loading'}
+                    aria-invalid={errors.email ? 'true' : 'false'}
+                  />
+                  {errors.email && <div className="error">{errors.email}</div>}
+                </div>
+                <div className="field">
+                  <div className="label">Full Name *</div>
+                  <input
+                    className="input"
+                    value={form.name}
+                    onChange={(e) => handleChange('name', e.target.value)}
+                    disabled={status === 'loading'}
+                    aria-invalid={errors.name ? 'true' : 'false'}
+                  />
+                  {errors.name && <div className="error">{errors.name}</div>}
+                </div>
+                <div className="field">
+                  <div className="label">Role</div>
+                  <select
+                    className="select"
+                    value={form.role}
+                    onChange={(e) => handleChange('role', e.target.value)}
+                    disabled={status === 'loading'}
+                    aria-invalid={errors.role ? 'true' : 'false'}
+                  >
+                    <option value="">None</option>
+                    {VALID_ROLES.map((r) => (
+                      <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                    ))}
+                  </select>
+                  {errors.role && <div className="error">{errors.role}</div>}
+                </div>
+                <div className="field">
+                  <div className="label">Phone</div>
+                  <input
+                    className="input"
+                    value={form.phone}
+                    onChange={(e) => handleChange('phone', e.target.value)}
+                    disabled={status === 'loading'}
+                    placeholder="+1-555-0100"
+                    aria-invalid={errors.phone ? 'true' : 'false'}
+                  />
+                  {errors.phone && <div className="error">{errors.phone}</div>}
+                </div>
+                <div className="field col-span-full">
+                  <div className="label">Department</div>
+                  <input
+                    className="input"
+                    value={form.department}
+                    onChange={(e) => handleChange('department', e.target.value)}
+                    disabled={status === 'loading'}
+                    placeholder="Engineering, Marketing…"
+                  />
+                </div>
+              </div>
 
-      {status !== 'success' && (
-        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
-          <Button onClick={handleClose} variant="outlined" disabled={status === 'loading'}>Cancel</Button>
-          <Button
-            onClick={handleSubmit}
-            variant="contained"
-            disabled={status === 'loading'}
-            startIcon={status === 'loading' ? <CircularProgress size={14} color="inherit" /> : null}
-          >
-            {status === 'loading' ? 'Creating...' : 'Create User'}
-          </Button>
-        </DialogActions>
-      )}
-    </Dialog>
+              {config?.endpoints && (
+                <div className="mt-3">
+                  <span className="badge">
+                    Will POST to <code className="mono">{config.baseUrl}{createEndpoint?.path ?? '/users'}</code>
+                  </span>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2.5 mt-4">
+                <button type="button" className="btn btn-secondary" onClick={handleClose} disabled={status === 'loading'}>
+                  Cancel
+                </button>
+                <button type="button" className="btn btn-primary btn-lg" onClick={handleSubmit} disabled={status === 'loading'}>
+                  {status === 'loading' ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="spin" aria-hidden>⟳</span>
+                      Creating...
+                    </span>
+                  ) : (
+                    'Create User'
+                  )}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

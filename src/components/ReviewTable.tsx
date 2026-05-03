@@ -1,11 +1,6 @@
 'use client';
 
 import React from 'react';
-import {
-  Box, Paper, Typography, Chip, Stack, IconButton, TextField,
-  Tooltip, Checkbox, Button, Select, MenuItem,
-  Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
-} from '@mui/material';
 import { VALID_ROLES, type MappedRow } from '@/lib/validation';
 
 export const FIELD_LABELS: Record<string, string> = {
@@ -36,11 +31,13 @@ const XIcon = () => (
   </svg>
 );
 const WarnIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
     <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
   </svg>
 );
+
+// ── Status Badge ───────────────────────────────────────────────────────────────
 
 interface StatusBadgeProps {
   errors: Record<string, string> | undefined;
@@ -48,22 +45,23 @@ interface StatusBadgeProps {
 }
 
 function StatusBadge({ errors, status }: StatusBadgeProps) {
-  if (status === 'success') return <Chip label="Imported" size="small" color="success" sx={{ fontWeight: 700 }} />;
-  if (status === 'failed') return <Chip label="Failed" size="small" color="error" sx={{ fontWeight: 700 }} />;
-  if (status === 'skipped') return <Chip label="Skipped" size="small" sx={{ fontWeight: 700, bgcolor: 'action.selected' }} />;
+  if (status === 'success') return <span className="badge badge-ok" style={{ fontWeight: 800, fontSize: 11 }}>Imported</span>;
+  if (status === 'failed') return <span className="badge badge-danger" style={{ fontWeight: 800, fontSize: 11 }}>Failed</span>;
+  if (status === 'skipped') return <span className="badge" style={{ fontWeight: 800, fontSize: 11 }}>Skipped</span>;
   const errCount = Object.keys(errors ?? {}).length;
-  if (errCount === 0) return <Chip label="Valid" size="small" color="success" variant="outlined" sx={{ fontWeight: 700 }} />;
+  if (errCount === 0) return (
+    <span className="badge badge-ok" style={{ fontWeight: 800, fontSize: 11, background: 'color-mix(in srgb, var(--ok) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--ok) 35%, var(--border))' }}>
+      Valid
+    </span>
+  );
   return (
-    <Chip
-      label={`${errCount} error${errCount > 1 ? 's' : ''}`}
-      size="small"
-      color="error"
-      variant="outlined"
-      icon={<span style={{ paddingLeft: 4 }}><WarnIcon /></span>}
-      sx={{ fontWeight: 700 }}
-    />
+    <span className="badge badge-danger" style={{ fontWeight: 800, fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <WarnIcon /> {errCount} error{errCount > 1 ? 's' : ''}
+    </span>
   );
 }
+
+// ── Editable Cell ─────────────────────────────────────────────────────────────
 
 interface EditableCellProps {
   value: string | undefined;
@@ -79,90 +77,93 @@ function EditableCell({ value, error, field, onSave, readOnly }: EditableCellPro
 
   React.useEffect(() => { setDraft(value ?? ''); }, [value]);
 
-  const commit = () => {
-    onSave(draft);
-    setEditing(false);
-  };
-
-  const cancel = () => {
-    setDraft(value ?? '');
-    setEditing(false);
-  };
+  const commit = () => { onSave(draft); setEditing(false); };
+  const cancel = () => { setDraft(value ?? ''); setEditing(false); };
 
   if (editing) {
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 140 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 140 }}>
         {field === 'role' ? (
-          <Select
+          <select
+            className="select"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            size="small"
             autoFocus
-            sx={{ fontSize: '0.8125rem', minWidth: 110, '& .MuiSelect-select': { py: 0.5 } }}
+            style={{ fontSize: 13, padding: '4px 8px' }}
           >
-            {VALID_ROLES.map((r) => <MenuItem key={r} value={r}>{r}</MenuItem>)}
-          </Select>
+            {VALID_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
         ) : (
-          <TextField
+          <input
+            className="input"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') cancel(); }}
-            size="small"
             autoFocus
-            sx={{ '& .MuiInputBase-input': { py: 0.5, fontSize: '0.8125rem' } }}
+            style={{ fontSize: 13, padding: '4px 8px' }}
           />
         )}
-        <IconButton size="small" onClick={commit} sx={{ color: 'success.main', p: 0.25 }}><CheckIcon /></IconButton>
-        <IconButton size="small" onClick={cancel} sx={{ color: 'text.secondary', p: 0.25 }}><XIcon /></IconButton>
-      </Box>
+        <button type="button" className="btn btn-ghost btn-icon" onClick={commit}
+          style={{ width: 26, height: 26, color: 'var(--ok)' }}>
+          <CheckIcon />
+        </button>
+        <button type="button" className="btn btn-ghost btn-icon" onClick={cancel}
+          style={{ width: 26, height: 26 }}>
+          <XIcon />
+        </button>
+      </div>
     );
   }
 
   return (
-    <Tooltip title={error ?? ''} arrow placement="top">
-      <Box
-        sx={{
-          display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 80,
-          px: 0.75, py: 0.25, borderRadius: 1, cursor: readOnly ? 'default' : 'text',
-          border: '1px solid',
-          borderColor: error ? 'error.main' : 'transparent',
-          bgcolor: error ? 'error.main' + '14' : 'transparent',
-          '&:hover': readOnly ? {} : { bgcolor: 'action.hover', borderColor: 'divider' },
-          transition: 'all 0.1s',
-          position: 'relative',
+    <div
+      title={error}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        minWidth: 80,
+        padding: '3px 6px',
+        borderRadius: 8,
+        cursor: readOnly ? 'default' : 'text',
+        border: '1px solid',
+        borderColor: error ? 'color-mix(in srgb, var(--danger) 60%, var(--border-2))' : 'transparent',
+        background: error ? 'color-mix(in srgb, var(--danger) 8%, transparent)' : 'transparent',
+        transition: 'border-color 0.1s, background 0.1s',
+      }}
+      onClick={() => !readOnly && setEditing(true)}
+      onMouseEnter={(e) => { if (!readOnly && !error) (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--text) 5%, transparent)'; }}
+      onMouseLeave={(e) => { if (!error) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+    >
+      <span
+        className={field === 'email' || field === 'external_id' ? 'mono' : ''}
+        style={{
+          color: error ? 'var(--danger)' : 'var(--text)',
+          fontSize: 13,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          maxWidth: 200,
         }}
-        onClick={() => !readOnly && setEditing(true)}
       >
-        <Typography
-          variant="body2"
-          sx={{
-            color: error ? 'error.main' : 'text.primary',
-            fontFamily: field === 'email' || field === 'external_id' ? 'monospace' : 'inherit',
-            fontSize: '0.8rem',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            maxWidth: 200,
-          }}
-        >
-          {value ?? <span style={{ opacity: 0.3 }}>—</span>}
-        </Typography>
-        {!readOnly && !error && (
-          <Box sx={{ opacity: 0, '.MuiBox-root:hover > &': { opacity: 1 }, ml: 'auto' }}>
-            <EditIcon />
-          </Box>
-        )}
-        {error && (
-          <Tooltip title={error} arrow>
-            <Box sx={{ color: 'error.main', display: 'flex', ml: 'auto' }}>
-              <WarnIcon />
-            </Box>
-          </Tooltip>
-        )}
-      </Box>
-    </Tooltip>
+        {value ?? <span style={{ opacity: 0.3 }}>—</span>}
+      </span>
+      {!readOnly && !error && (
+        <span style={{ opacity: 0, marginLeft: 'auto', color: 'var(--text-3)' }}
+          className="edit-hint">
+          <EditIcon />
+        </span>
+      )}
+      {error && (
+        <span style={{ color: 'var(--danger)', marginLeft: 'auto', display: 'flex' }}>
+          <WarnIcon />
+        </span>
+      )}
+    </div>
   );
 }
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type FilterType = 'all' | 'valid' | 'errors' | 'success' | 'failed';
 
@@ -175,6 +176,8 @@ export interface ReviewTableProps {
   onFilterChange: (filter: FilterType) => void;
   showImportStatus: boolean;
 }
+
+// ── ReviewTable ───────────────────────────────────────────────────────────────
 
 export function ReviewTable({ rows, fields, onRowUpdate, onDeleteSelected, filter, onFilterChange, showImportStatus }: ReviewTableProps) {
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
@@ -222,97 +225,112 @@ export function ReviewTable({ rows, fields, onRowUpdate, onDeleteSelected, filte
     setSelected((s) => new Set(s));
   };
 
-  const filterOptions: Array<{ val: FilterType; label: string; color?: 'success' | 'error' | 'primary' }> = [
+  const filterOptions: Array<{ val: FilterType; label: string; variant?: 'ok' | 'danger' }> = [
     { val: 'all', label: `All (${rows.length})` },
-    { val: 'valid', label: `Valid (${validCount})`, color: 'success' },
-    { val: 'errors', label: `Errors (${errorCount})`, color: 'error' },
+    { val: 'valid', label: `Valid (${validCount})`, variant: 'ok' },
+    { val: 'errors', label: `Errors (${errorCount})`, variant: 'danger' },
     ...(showImportStatus
       ? [
-          { val: 'success' as FilterType, label: 'Imported', color: 'success' as const },
-          { val: 'failed' as FilterType, label: 'Failed', color: 'error' as const },
+          { val: 'success' as FilterType, label: 'Imported', variant: 'ok' as const },
+          { val: 'failed' as FilterType, label: 'Failed', variant: 'danger' as const },
         ]
       : []),
   ];
 
   return (
-    <Box>
+    <div>
       {/* Toolbar */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5, flexWrap: 'wrap' }}>
-        <Stack direction="row" spacing={0.5}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div className="tabs">
           {filterOptions.map((f) => (
-            <Chip
+            <button
               key={f.val}
-              label={f.label}
-              size="small"
-              color={filter === f.val ? (f.color ?? 'primary') : 'default'}
-              variant={filter === f.val ? 'filled' : 'outlined'}
+              type="button"
+              className={`tab${filter === f.val ? ' active' : ''}`}
               onClick={() => onFilterChange(f.val)}
-              sx={{ cursor: 'pointer', fontWeight: filter === f.val ? 700 : 400 }}
-            />
+              style={{
+                color: filter === f.val
+                  ? (f.variant === 'ok' ? 'var(--ok)' : f.variant === 'danger' ? 'var(--danger)' : undefined)
+                  : undefined,
+              }}
+            >
+              {f.label}
+            </button>
           ))}
-        </Stack>
+        </div>
+
         {selected.size > 0 && (
-          <Button
-            size="small"
-            color="error"
-            variant="outlined"
+          <button
+            type="button"
+            className="btn btn-sm"
+            style={{ marginLeft: 'auto', borderColor: 'color-mix(in srgb, var(--danger) 60%, var(--border-2))', color: 'var(--danger)' }}
             onClick={() => { onDeleteSelected([...selected]); setSelected(new Set()); }}
-            sx={{ ml: 'auto' }}
           >
             Delete {selected.size} row{selected.size > 1 ? 's' : ''}
-          </Button>
+          </button>
         )}
-      </Box>
+      </div>
 
-      <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, maxHeight: 460 }}>
-        <Table size="small" stickyHeader>
-          <TableHead>
-            <TableRow sx={{ '& th': { bgcolor: 'background.paper' } }}>
-              <TableCell padding="checkbox" sx={{ width: 40 }}>
-                <Checkbox size="small" checked={allSelected} indeterminate={selected.size > 0 && !allSelected} onChange={toggleAll} />
-              </TableCell>
-              <TableCell sx={{ width: 40 }}><Typography variant="caption" color="text.secondary">#</Typography></TableCell>
-              <TableCell sx={{ width: 80 }}><Typography variant="caption" color="text.secondary">STATUS</Typography></TableCell>
+      {/* Table container */}
+      <div className="card" style={{ overflow: 'hidden', maxHeight: 460, overflowY: 'auto' }}>
+        <table style={{ minWidth: '100%' }}>
+          <thead>
+            <tr>
+              <th style={{ width: 40, padding: '9px 10px' }}>
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(el) => { if (el) el.indeterminate = selected.size > 0 && !allSelected; }}
+                  onChange={toggleAll}
+                  style={{ width: 15, height: 15, cursor: 'pointer' }}
+                />
+              </th>
+              <th style={{ width: 40 }}>#</th>
+              <th style={{ width: 90 }}>Status</th>
               {fields.map((field) => (
-                <TableCell key={field} onClick={() => handleSort(field)} sx={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
-                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-                    <Typography variant="caption" sx={{ fontWeight: 700 }}>{FIELD_LABELS[field] ?? field}</Typography>
-                    {sortField === field && (
-                      <Typography variant="caption" sx={{ opacity: 0.6 }}>{sortDir === 'asc' ? '↑' : '↓'}</Typography>
-                    )}
-                  </Stack>
-                </TableCell>
+                <th
+                  key={field}
+                  onClick={() => handleSort(field)}
+                  style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                >
+                  {FIELD_LABELS[field] ?? field}
+                  {sortField === field && (
+                    <span style={{ marginLeft: 4, opacity: 0.6 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>
+                  )}
+                </th>
               ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
+            </tr>
+          </thead>
+          <tbody>
             {filtered.map((row) => {
               const hasError = Object.keys(row._errors ?? {}).length > 0;
               const isSelected = selected.has(row._id);
               return (
-                <TableRow
+                <tr
                   key={row._id}
-                  selected={isSelected}
-                  sx={{
-                    bgcolor: row._status === 'success' ? 'success.main' + '0A' :
-                      row._status === 'failed' ? 'error.main' + '0A' :
-                      hasError ? 'error.main' + '08' :
-                      isSelected ? 'primary.main' + '10' : 'transparent',
-                    '&:hover': { bgcolor: 'action.hover' },
+                  style={{
+                    background:
+                      row._status === 'success' ? 'color-mix(in srgb, var(--ok) 8%, transparent)' :
+                      row._status === 'failed' ? 'color-mix(in srgb, var(--danger) 8%, transparent)' :
+                      hasError ? 'color-mix(in srgb, var(--danger) 5%, transparent)' :
+                      isSelected ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'transparent',
                     transition: 'background-color 0.15s',
                   }}
                 >
-                  <TableCell padding="checkbox">
-                    <Checkbox size="small" checked={isSelected} onChange={() => toggleRow(row._id)} />
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="caption" color="text.secondary">{rows.indexOf(row) + 1}</Typography>
-                  </TableCell>
-                  <TableCell>
+                  <td style={{ width: 40 }}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleRow(row._id)}
+                      style={{ width: 15, height: 15, cursor: 'pointer' }}
+                    />
+                  </td>
+                  <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{rows.indexOf(row) + 1}</td>
+                  <td>
                     <StatusBadge errors={row._errors} status={row._status} />
-                  </TableCell>
+                  </td>
                   {fields.map((field) => (
-                    <TableCell key={field} sx={{ p: 0.5, minWidth: 120 }}>
+                    <td key={field} style={{ padding: '5px 8px', minWidth: 120 }}>
                       <EditableCell
                         value={rowAsRecord(row)[field]}
                         error={row._errors?.[field]}
@@ -320,21 +338,21 @@ export function ReviewTable({ rows, fields, onRowUpdate, onDeleteSelected, filte
                         readOnly={!!row._status}
                         onSave={(val) => handleCellSave(row._id, field, val)}
                       />
-                    </TableCell>
+                    </td>
                   ))}
-                </TableRow>
+                </tr>
               );
             })}
             {filtered.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={fields.length + 3} sx={{ textAlign: 'center', py: 4 }}>
-                  <Typography variant="body2" color="text.secondary">No rows match the current filter</Typography>
-                </TableCell>
-              </TableRow>
+              <tr>
+                <td colSpan={fields.length + 3} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-3)' }}>
+                  No rows match the current filter
+                </td>
+              </tr>
             )}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Box>
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
