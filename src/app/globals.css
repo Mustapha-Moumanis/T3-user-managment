@@ -305,14 +305,20 @@ input, textarea, select { font-family: inherit; color: inherit; }
 
 /* ── Page headers ─────────────────────────────────────────────────────────── */
 .page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 32px;
 }
-.page-title { font-size: 24px; font-weight: 600; margin: 0; line-height: 1.2; }
-.page-subtitle { color: var(--text-2); font-size: 13px; margin-top: 4px; max-width: 560px; }
+.page-title { 
+  font-size: 22px; 
+  font-weight: 900; 
+  margin: 0; 
+  line-height: 1.2; 
+  letter-spacing: -0.02em;
+}
+.page-subtitle { 
+  color: var(--text-2); 
+  font-size: 13px; 
+  margin-top: 4px;
+}
 
 /* ── Field/mapping chips ──────────────────────────────────────────────────── */
 .field-chip {

@@ -13,12 +13,26 @@ const AuthSchema = new Schema(
   { _id: false }
 );
 
+const FieldDefSchema = new Schema(
+  {
+    key: { type: String, required: true },
+    label: { type: String, required: true },
+    type: { type: String, default: "string", enum: ["string", "number", "array"] },
+    required: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
 const EndpointSchema = new Schema(
   {
     id: { type: String, required: true },
-    label: { type: String },
+    label: { type: String, default: "" },
     method: { type: String, default: "POST" },
     path: { type: String, required: true },
+    bodyKey: { type: String, default: "" },
+    requiredFields: { type: [FieldDefSchema], default: [] },
+    optionalFields: { type: [FieldDefSchema], default: [] },
+    savedMapping: { type: Schema.Types.Mixed, default: {} },
   },
   { _id: false }
 );
@@ -27,7 +41,7 @@ const ProjectSchema = new Schema(
   {
     name: { type: String, required: true },
     description: { type: String, default: "" },
-    color: { type: String, default: "dodgerBlue" }, // Used for accent preset
+    color: { type: String, default: "dodgerBlue" },
     starred: { type: Boolean, default: false },
     baseUrl: { type: String, default: "" },
     auth: { type: AuthSchema, default: () => ({}) },

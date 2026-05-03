@@ -1,10 +1,15 @@
-// Validation and transformation logic
+// Validation, transformation, and API payload logic
 
-export const VALID_ROLES = ['admin', 'editor', 'viewer', 'manager', 'developer', 'analyst', 'support'] as const;
-export type ValidRole = (typeof VALID_ROLES)[number];
+import type { ProjectEndpoint } from './schemas';
+
+export interface FieldDef {
+  key: string;
+  label: string;
+  type?: 'string' | 'number' | 'array';
+  required: boolean;
+}
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-export const PHONE_RE = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/;
 
 export interface RawRow extends Record<string, string> {
   _id: string;
@@ -12,14 +17,7 @@ export interface RawRow extends Record<string, string> {
 
 export interface MappedRow {
   _id: string;
-  email?: string;
-  name?: string;
-  first_name?: string;
-  last_name?: string;
-  phone?: string;
-  role?: string;
-  department?: string;
-  external_id?: string;
+  [key: string]: string | Record<string, string> | 'success' | 'failed' | 'skipped' | null | undefined;
   _errors?: Record<string, string>;
   _status?: 'success' | 'failed' | 'skipped' | null;
   _errorMsg?: string | null;
@@ -27,59 +25,7 @@ export interface MappedRow {
 
 export type Mapping = Partial<Record<string, string>>;
 
-export function validateRow(
-  row: MappedRow,
-  allRows: MappedRow[],
-  existingEmails: Set<string> = new Set(),
-  rowIndex: number,
-): Record<string, string> {
-  const errors: Record<string, string> = {};
-
-  // Required: email
-  if (!row.email || !row.email.trim()) {
-    errors['email'] = 'Email is required';
-  } else if (!EMAIL_RE.test(row.email.trim())) {
-    errors['email'] = 'Invalid email format';
-  } else {
-    // Duplicate within file
-    const dupeIdx = allRows.findIndex(
-      (r, i) => i !== rowIndex && r.email && r.email.trim().toLowerCase() === row.email!.trim().toLowerCase(),
-    );
-    if (dupeIdx !== -1) errors['email'] = `Duplicate of row ${dupeIdx + 1}`;
-    // Duplicate against existing
-    if (existingEmails.has(row.email.trim().toLowerCase())) {
-      errors['email'] = 'Already exists in system';
-    }
-  }
-
-  // Required: name
-  if (!row.name || !row.name.trim()) {
-    errors['name'] = 'Name is required';
-  }
-
-  // Optional: phone
-  if (row.phone && row.phone.trim() && !PHONE_RE.test(row.phone.trim())) {
-    errors['phone'] = 'Invalid phone format';
-  }
-
-  // Optional: role allowlist
-  if (row.role && row.role.trim()) {
-    const roleVal = row.role.trim().toLowerCase();
-    if (!(VALID_ROLES as readonly string[]).includes(roleVal)) {
-      errors['role'] = `Must be one of: ${VALID_ROLES.join(', ')}`;
-    }
-  }
-
-  return errors;
-}
-
-export function validateAllRows(rows: MappedRow[], existingEmails: Set<string> = new Set()): MappedRow[] {
-  return rows.map((row, i) => ({
-    ...row,
-    _errors: validateRow(row, rows, existingEmails, i),
-    _status: null,
-  }));
-}
+// ── CSV parsing ───────────────────────────────────────────────────────────────
 
 export function parseCSVText(text: string): { headers: string[]; rows: RawRow[] } {
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
@@ -121,17 +67,22 @@ export function parseCSVText(text: string): { headers: string[]; rows: RawRow[] 
   return { headers, rows };
 }
 
+// ── Auto-detect mapping ───────────────────────────────────────────────────────
+
 export function autoDetectMapping(headers: string[]): Mapping {
   const mapping: Mapping = {};
   const FIELD_PATTERNS: Record<string, RegExp> = {
     email: /email|e-mail|mail/i,
-    name: /^name$|full.?name|display.?name/i,
-    first_name: /first.?name|firstname/i,
+    name: /^name$|full.?name|display.?name|nom.?complet/i,
+    codeCentre: /code.?centre|centre.?code|codecentre/i,
+    codeAref: /code.?aref|aref.?code|codeAref/i,
+    matieres: /matiere|matieres?|subject/i,
+    first_name: /first.?name|firstname|prenom/i,
     last_name: /last.?name|lastname|surname/i,
     phone: /phone|mobile|tel/i,
     role: /role|permission|access.?level/i,
     department: /dept|department|team/i,
-    external_id: /id$|user.?id|external/i,
+    external_id: /^id$|user.?id|external/i,
   };
   headers.forEach((h) => {
     for (const [field, re] of Object.entries(FIELD_PATTERNS)) {
@@ -146,18 +97,125 @@ export function autoDetectMapping(headers: string[]): Mapping {
   return mapping;
 }
 
+// ── Apply mapping ─────────────────────────────────────────────────────────────
+
 export function applyMapping(rows: RawRow[], mapping: Mapping): MappedRow[] {
   return rows.map((row) => {
     const mapped: MappedRow = { _id: row._id };
     for (const [field, srcCol] of Object.entries(mapping)) {
       if (srcCol && row[srcCol] !== undefined) {
-        (mapped as unknown as Record<string, string>)[field] = row[srcCol] ?? '';
+        (mapped as Record<string, unknown>)[field] = row[srcCol] ?? '';
       }
     }
-    // If separate first/last name but no full name
-    if (!mapped.name && (mapped.first_name || mapped.last_name)) {
-      mapped.name = [mapped.first_name, mapped.last_name].filter(Boolean).join(' ');
+    // Combine first/last name if separate columns but no "name" mapping
+    const firstName = (mapped as Record<string, unknown>)['first_name'] as string | undefined;
+    const lastName = (mapped as Record<string, unknown>)['last_name'] as string | undefined;
+    if (!(mapped as Record<string, unknown>)['name'] && (firstName || lastName)) {
+      (mapped as Record<string, unknown>)['name'] = [firstName, lastName].filter(Boolean).join(' ');
     }
     return mapped;
   });
+}
+
+// ── Endpoint-driven field defs ────────────────────────────────────────────────
+
+export function getFieldDefsForEndpoint(endpoint: ProjectEndpoint): FieldDef[] {
+  return [
+    ...(endpoint.requiredFields || []).map((f) => ({ key: f.key, label: f.label, type: f.type as FieldDef['type'], required: true })),
+    ...(endpoint.optionalFields || []).map((f) => ({ key: f.key, label: f.label, type: f.type as FieldDef['type'], required: false })),
+    { key: '_skip', label: '— Skip Column —', required: false },
+  ];
+}
+
+// ── Endpoint payload builder ──────────────────────────────────────────────────
+
+export function buildEndpointPayload(
+  row: MappedRow,
+  endpoint: ProjectEndpoint,
+): Record<string, unknown> {
+  const allFields = [...(endpoint.requiredFields || []), ...(endpoint.optionalFields || [])];
+  const payload: Record<string, unknown> = {};
+  if (endpoint.bodyKey) payload.userType = endpoint.bodyKey;
+  for (const f of allFields) {
+    const val = (row as Record<string, string>)[f.key];
+    if (!val?.trim()) continue;
+    const payloadKey = f.key === 'name' ? 'fullName' : f.key;
+    payload[payloadKey] = f.type === 'array'
+      ? val.split(',').map((s) => s.trim()).filter(Boolean)
+      : f.type === 'number'
+        ? Number(val)
+        : val.trim();
+  }
+  return payload;
+}
+
+// ── Endpoint-driven validation ────────────────────────────────────────────────
+
+function validateRowForEndpoint(
+  row: MappedRow,
+  allRows: MappedRow[],
+  existingEmails: Set<string>,
+  rowIndex: number,
+  endpoint: ProjectEndpoint,
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+
+  const emailVal = (row as Record<string, string>)['email'];
+  if (!emailVal?.trim()) {
+    errors['email'] = 'Email is required';
+  } else if (!EMAIL_RE.test(emailVal.trim())) {
+    errors['email'] = 'Invalid email format';
+  } else {
+    const dupeIdx = allRows.findIndex(
+      (r, i) =>
+        i !== rowIndex &&
+        (r as Record<string, string>)['email']?.trim().toLowerCase() === emailVal.trim().toLowerCase(),
+    );
+    if (dupeIdx !== -1) errors['email'] = `Duplicate of row ${dupeIdx + 1}`;
+    if (existingEmails.has(emailVal.trim().toLowerCase())) errors['email'] = 'Already exists in system';
+  }
+
+  const nameVal = (row as Record<string, string>)['name'];
+  if (!nameVal?.trim()) errors['name'] = 'Name is required';
+
+  for (const f of (endpoint.requiredFields || [])) {
+    if (f.key === 'email' || f.key === 'name') continue;
+    const val = (row as Record<string, string>)[f.key];
+    if (!val?.trim()) {
+      errors[f.key] = `${f.label} is required`;
+    }
+  }
+
+  return errors;
+}
+
+export function validateAllRowsForEndpoint(
+  rows: MappedRow[],
+  endpoint: ProjectEndpoint,
+  existingEmails = new Set<string>(),
+): MappedRow[] {
+  return rows.map((row, i) => ({
+    ...row,
+    _errors: validateRowForEndpoint(row, rows, existingEmails, i, endpoint),
+    _status: null,
+  }));
+}
+
+// ── Auth headers ──────────────────────────────────────────────────────────────
+
+export function buildAuthHeaders(
+  auth: { type?: string; value?: string; headerName?: string; username?: string } | undefined,
+): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (!auth?.type) return headers;
+
+  if (auth.type === 'bearer' && auth.value) {
+    headers['Authorization'] = `Bearer ${auth.value}`;
+  } else if (auth.type === 'apikey' && auth.headerName && auth.value) {
+    headers[auth.headerName] = auth.value;
+  } else if (auth.type === 'basic' && auth.username && auth.value) {
+    headers['Authorization'] = 'Basic ' + btoa(`${auth.username}:${auth.value}`);
+  }
+
+  return headers;
 }

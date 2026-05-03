@@ -202,7 +202,7 @@ function StepperItem({
       <div
         data-slot="stepper-item"
         className={cn(
-          "group/step flex items-center justify-center flex-1 last:flex-initial",
+          "group/step flex items-center justify-center flex-1",
           className
         )}
         data-state={state}

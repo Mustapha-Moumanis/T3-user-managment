@@ -1,11 +1,14 @@
 'use client';
 
 import React from 'react';
-import { VALID_ROLES, type MappedRow } from '@/lib/validation';
+import { type MappedRow } from '@/lib/validation';
 
 export const FIELD_LABELS: Record<string, string> = {
   email: 'Email',
   name: 'Full Name',
+  codeCentre: 'Code Centre',
+  codeAref: 'Code AREF',
+  matieres: 'Matières',
   first_name: 'First Name',
   last_name: 'Last Name',
   role: 'Role',
@@ -83,26 +86,14 @@ function EditableCell({ value, error, field, onSave, readOnly }: EditableCellPro
   if (editing) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 140 }}>
-        {field === 'role' ? (
-          <select
-            className="select"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            autoFocus
-            style={{ fontSize: 13, padding: '4px 8px' }}
-          >
-            {VALID_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
-        ) : (
-          <input
-            className="input"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') cancel(); }}
-            autoFocus
-            style={{ fontSize: 13, padding: '4px 8px' }}
-          />
-        )}
+        <input
+          className="input"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') cancel(); }}
+          autoFocus
+          style={{ fontSize: 13, padding: '4px 8px' }}
+        />
         <button type="button" className="btn btn-ghost btn-icon" onClick={commit}
           style={{ width: 26, height: 26, color: 'var(--ok)' }}>
           <CheckIcon />

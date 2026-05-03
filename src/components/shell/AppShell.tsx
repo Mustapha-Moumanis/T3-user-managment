@@ -9,17 +9,13 @@ interface AppShellProps {
   maxWidth?: number | string;
 }
 
-export function AppShell({ children, breadcrumbs, maxWidth = 1280 }: AppShellProps) {
+export function AppShell({ children, breadcrumbs, maxWidth = 1100 }: AppShellProps) {
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+    <div className="min-h-screen bg-[var(--bg)] flex flex-col">
       <Navbar breadcrumbs={breadcrumbs} />
       
-      <main style={{ 
-        flex: 1,
-        width: "100%",
+      <main className="flex-1 w-full mx-auto px-6 py-8" style={{ 
         maxWidth: typeof maxWidth === "number" ? `${maxWidth}px` : maxWidth, 
-        margin: "0 auto", 
-        padding: "32px" 
       }}>
         {children}
       </main>

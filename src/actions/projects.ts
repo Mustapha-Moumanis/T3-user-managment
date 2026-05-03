@@ -32,3 +32,16 @@ export async function starProject(id: string, starred: boolean) {
   await Project.findByIdAndUpdate(id, { starred });
   revalidatePath("/");
 }
+
+export async function saveEndpointMapping(
+  projectId: string,
+  endpointId: string,
+  mapping: Record<string, string>,
+) {
+  await connectDB();
+  await Project.updateOne(
+    { _id: projectId, 'endpoints.id': endpointId },
+    { $set: { 'endpoints.$.savedMapping': mapping } },
+  );
+  revalidatePath(`/projects/${projectId}/import`);
+}
