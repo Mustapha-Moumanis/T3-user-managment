@@ -45,11 +45,20 @@ const WarnIcon = () => (
 interface StatusBadgeProps {
   errors: Record<string, string> | undefined;
   status: MappedRow['_status'];
+  errorMsg?: string | null;
 }
 
-function StatusBadge({ errors, status }: StatusBadgeProps) {
+function StatusBadge({ errors, status, errorMsg }: StatusBadgeProps) {
   if (status === 'success') return <span className="badge badge-ok" style={{ fontWeight: 800, fontSize: 11 }}>Imported</span>;
-  if (status === 'failed') return <span className="badge badge-danger" style={{ fontWeight: 800, fontSize: 11 }}>Failed</span>;
+  if (status === 'failed') return (
+    <span
+      className="badge badge-danger"
+      title={errorMsg || 'Import failed'}
+      style={{ fontWeight: 800, fontSize: 11, cursor: errorMsg ? 'help' : 'default', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+    >
+      Failed {errorMsg && <div style={{ width: 4, height: 4, borderRadius: 2, background: 'currentColor', opacity: 0.6 }} />}
+    </span>
+  );
   if (status === 'skipped') return <span className="badge" style={{ fontWeight: 800, fontSize: 11 }}>Skipped</span>;
   const errCount = Object.keys(errors ?? {}).length;
   if (errCount === 0) return (
@@ -299,6 +308,7 @@ export function ReviewTable({ rows, fields, onRowUpdate, onDeleteSelected, filte
               return (
                 <tr
                   key={row._id}
+                  title={row._errorMsg || undefined}
                   style={{
                     background:
                       row._status === 'success' ? 'color-mix(in srgb, var(--ok) 8%, transparent)' :
@@ -318,7 +328,7 @@ export function ReviewTable({ rows, fields, onRowUpdate, onDeleteSelected, filte
                   </td>
                   <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{rows.indexOf(row) + 1}</td>
                   <td>
-                    <StatusBadge errors={row._errors} status={row._status} />
+                    <StatusBadge errors={row._errors} status={row._status} errorMsg={row._errorMsg} />
                   </td>
                   {fields.map((field) => (
                     <td key={field} style={{ padding: '5px 8px', minWidth: 120 }}>

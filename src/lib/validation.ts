@@ -1,6 +1,5 @@
-// Validation, transformation, and API payload logic
-
 import type { ProjectEndpoint } from './schemas';
+import * as XLSX from 'xlsx';
 
 export interface FieldDef {
   key: string;
@@ -64,6 +63,30 @@ export function parseCSVText(text: string): { headers: string[]; rows: RawRow[] 
     });
     return obj;
   });
+  return { headers, rows };
+}
+
+// ── Excel parsing ─────────────────────────────────────────────────────────────
+
+export function parseExcelBuffer(buffer: ArrayBuffer): { headers: string[]; rows: RawRow[] } {
+  const workbook = XLSX.read(buffer, { type: 'array' });
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) return { headers: [], rows: [] };
+  const worksheet = workbook.Sheets[firstSheetName];
+  if (!worksheet) return { headers: [], rows: [] };
+
+  const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet);
+  if (data.length === 0) return { headers: [], rows: [] };
+
+  const headers = Object.keys(data[0]!);
+  const rows: RawRow[] = data.map((row, i) => {
+    const obj: RawRow = { _id: `row-${i}` };
+    headers.forEach((h) => {
+      obj[h] = row[h] != null ? String(row[h]) : '';
+    });
+    return obj;
+  });
+
   return { headers, rows };
 }
 

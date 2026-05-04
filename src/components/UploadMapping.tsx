@@ -3,6 +3,7 @@
 import React from 'react';
 import {
   parseCSVText,
+  parseExcelBuffer,
   autoDetectMapping,
   applyMapping,
   type RawRow,
@@ -61,11 +62,20 @@ export function UploadMapping({
   const handleFile = (file: File | null | undefined) => {
     if (!file) return;
     setLoading(true);
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
     const reader = new FileReader();
+
     reader.onload = (e) => {
       setTimeout(() => {
-        const text = e.target?.result as string;
-        const parsed = parseCSVText(text);
+        let parsed: { headers: string[]; rows: RawRow[] };
+        if (isExcel) {
+          const buffer = e.target?.result as ArrayBuffer;
+          parsed = parseExcelBuffer(buffer);
+        } else {
+          const text = e.target?.result as string;
+          parsed = parseCSVText(text);
+        }
+
         const autoMap = autoDetectMapping(parsed.headers);
         // Merge savedMapping over autoDetect (saved takes priority)
         const mergedMap = savedMapping && Object.keys(savedMapping).length > 0
@@ -75,7 +85,12 @@ export function UploadMapping({
         setLoading(false);
       }, 400);
     };
-    reader.readAsText(file);
+
+    if (isExcel) {
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.readAsText(file);
+    }
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -98,7 +113,7 @@ export function UploadMapping({
     <>
       <div className="page-header">
         <h1 className="page-title">Upload & Map Columns</h1>
-        <p className="page-subtitle">Upload a CSV file, then verify the column mapping below.</p>
+        <p className="page-subtitle">Upload a CSV or Excel file, then verify the column mapping below.</p>
       </div>
 
       {!rawData && (
@@ -111,11 +126,11 @@ export function UploadMapping({
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
         >
-          <input ref={fileInputRef} type="file" accept=".csv" hidden onChange={handleInputChange} />
+          <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" hidden onChange={handleInputChange} />
           <div className="flex justify-center mb-3">
             <UploadIcon />
           </div>
-          <div className="text-lg font-extrabold mb-1.5">Drop your CSV file here</div>
+          <div className="text-lg font-extrabold mb-1.5">Drop your file here</div>
           <p className="page-subtitle mt-0 mb-4">
             Expected columns: {canonicalFields.filter((f) => f.required).map((f) => f.label).join(', ')}
           </p>
