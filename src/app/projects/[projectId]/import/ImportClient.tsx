@@ -2,6 +2,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
+import { Settings, UserPlus, ArrowRight } from "lucide-react";
 import { UploadMapping, type RawData } from "@/components/UploadMapping";
 import { ReviewStep } from "@/components/ReviewStep";
 import {
@@ -15,6 +16,10 @@ import {
 import type { ProjectEndpoint } from "@/lib/schemas";
 import { AddUserModal } from "@/components/AddUserModal";
 import { AppShell } from "@/components/shell/AppShell";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Stepper } from "@/components/ui/stepper";
 
 export function ImportClient({ project }: { project: any }) {
   const router = useRouter();
@@ -33,8 +38,6 @@ export function ImportClient({ project }: { project: any }) {
   const handleFileLoad = (parsed: RawData | null, autoMap: Mapping) => {
     if (!parsed) { setRawData(null); setMapping({}); return; }
     setRawData({ ...parsed, fileName: parsed.fileName ?? "users.csv" });
-
-    // Auto-apply saved mapping if available, with autoDetect as fallback
     const saved = selectedEndpoint?.savedMapping ?? {};
     const hasSaved = Object.keys(saved).length > 0;
     setMapping(hasSaved ? { ...autoMap, ...saved } : autoMap);
@@ -65,64 +68,112 @@ export function ImportClient({ project }: { project: any }) {
   ];
 
   return (
-    <AppShell breadcrumbs={breadcrumbs}>
-      {/* ── Step 1: Upload & Map (with optional endpoint selector) ── */}
-      {screen === "upload" && (
+    <AppShell breadcrumbs={breadcrumbs} maxWidth={1100}>
+      {/* Page header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+          marginBottom: 28,
+        }}
+      >
         <div>
-          {/* Endpoint selector — shown if multiple endpoints */}
+          <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.025em", margin: 0 }}>
+            Import users
+          </h1>
+          <p style={{ color: "hsl(var(--muted-foreground))", fontSize: 14, marginTop: 4 }}>
+            Upload a CSV and map columns to the destination fields.
+          </p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Button variant="ghost" size="icon-sm" asChild>
+            <a href={`/projects/${project.id}/settings`}>
+              <Settings size={16} />
+            </a>
+          </Button>
+          <Button size="sm" onClick={() => setAddUserOpen(true)}>
+            <UserPlus size={14} /> Add single user
+          </Button>
+        </div>
+      </div>
+
+      {/* Stepper */}
+      <div style={{ marginBottom: 32 }}>
+        <Stepper
+          steps={["Upload & map", "Review & import"]}
+          current={screen === "upload" ? 0 : 1}
+        />
+      </div>
+
+      {/* ── Upload screen ── */}
+      {screen === "upload" && (
+        <>
+          {/* Endpoint selector — shown when multiple endpoints */}
           {endpoints.length > 1 && (
-            <div className="mb-6">
-              <div className="label text-sm mb-2">Select Endpoint</div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-                  gap: 10,
-                }}
-              >
-                {endpoints.map((ep) => (
-                  <div
-                    key={ep.id}
-                    className="card"
-                    onClick={() => handleSelectEndpoint(ep)}
-                    style={{
-                      padding: "14px 16px",
-                      cursor: "pointer",
-                      border: `2px solid ${selectedEndpoint?.id === ep.id ? "var(--accent)" : "var(--border)"}`,
-                      background: selectedEndpoint?.id === ep.id ? "var(--accent-soft)" : "var(--surface)",
-                      transition: "border-color 0.15s, background 0.15s",
-                    }}
-                  >
-                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>
-                      {ep.label || ep.path}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "var(--font-mono)" }}>
-                      {ep.method ?? "POST"} {ep.path}
-                    </div>
-                    {((ep.requiredFields?.length ?? 0) > 0 || (ep.optionalFields?.length ?? 0) > 0) && (
-                      <div style={{ fontSize: 10, marginTop: 4, color: "var(--text-3)" }}>
-                        {ep.requiredFields?.length ?? 0} required · {ep.optionalFields?.length ?? 0} optional fields
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+            <Card style={{ marginBottom: 16 }}>
+              <CardContent style={{ paddingTop: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8, color: "hsl(var(--foreground))" }}>
+                  Destination endpoint
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                  {endpoints.map((ep) => {
+                    const reqCount = (ep.requiredFields?.length ?? 0);
+                    const selected = selectedEndpoint?.id === ep.id;
+                    return (
+                      <button
+                        key={ep.id}
+                        type="button"
+                        onClick={() => handleSelectEndpoint(ep)}
+                        style={{
+                          textAlign: "left",
+                          padding: 12,
+                          borderRadius: "calc(var(--radius) - 2px)",
+                          border: `1px solid ${selected ? "hsl(var(--brand))" : "hsl(var(--border))"}`,
+                          background: selected ? "hsl(var(--brand) / 0.06)" : "hsl(var(--background))",
+                          cursor: "pointer",
+                          transition: "all 120ms",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                          <span style={{ fontWeight: 500, fontSize: 14 }}>{ep.label || ep.path}</span>
+                          <span className="method method-POST">POST</span>
+                        </div>
+                        <div className="mono" style={{ fontSize: 12, color: "hsl(var(--muted-foreground))" }}>
+                          {ep.path}
+                        </div>
+                        {reqCount > 0 && (
+                          <div style={{ fontSize: 12, color: "hsl(var(--muted-foreground))", marginTop: 8 }}>
+                            {reqCount} required
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {endpoints.length === 0 && (
-            <div className="card" style={{ padding: "48px 24px", textAlign: "center", marginBottom: 32 }}>
-              <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>No endpoints configured</div>
-              <div style={{ color: "var(--text-3)", marginBottom: 20 }}>
+            <div
+              style={{
+                padding: "48px 24px",
+                textAlign: "center",
+                border: "2px dashed hsl(var(--border))",
+                borderRadius: "var(--radius)",
+                marginBottom: 24,
+              }}
+            >
+              <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No endpoints configured</div>
+              <p style={{ color: "hsl(var(--muted-foreground))", marginBottom: 20 }}>
                 Add endpoints in project settings to enable the import flow.
-              </div>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => router.push(`/projects/${project.id}/settings`)}
-              >
-                Go to Settings →
-              </button>
+              </p>
+              <Button onClick={() => router.push(`/projects/${project.id}/settings`)}>
+                Go to Settings <ArrowRight size={14} />
+              </Button>
             </div>
           )}
 
@@ -138,10 +189,10 @@ export function ImportClient({ project }: { project: any }) {
               savedMapping={selectedEndpoint.savedMapping}
             />
           )}
-        </div>
+        </>
       )}
 
-      {/* ── Step 2: Review & Import ── */}
+      {/* ── Review screen ── */}
       {screen === "review" && selectedEndpoint && (
         <ReviewStep
           rows={rows}
@@ -161,32 +212,6 @@ export function ImportClient({ project }: { project: any }) {
             setScreen("upload");
           }}
         />
-      )}
-
-      {project.baseUrl && (
-        <button
-          type="button"
-          className="btn btn-primary btn-icon"
-          onClick={() => setAddUserOpen(true)}
-          title="Add single user"
-          style={{
-            position: "fixed",
-            bottom: 32,
-            right: 24,
-            width: 52,
-            height: 52,
-            borderRadius: 999,
-            boxShadow: "0 4px 20px color-mix(in srgb, var(--accent) 45%, transparent)",
-            zIndex: 10,
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-            <circle cx="8.5" cy="7" r="4" />
-            <line x1="20" y1="8" x2="20" y2="14" />
-            <line x1="23" y1="11" x2="17" y2="11" />
-          </svg>
-        </button>
       )}
 
       <AddUserModal open={addUserOpen} onClose={() => setAddUserOpen(false)} config={project} />

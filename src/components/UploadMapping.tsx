@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { ArrowLeft, ArrowRight, ArrowRight as Arrow, CheckCircle, File, Upload } from 'lucide-react';
 import {
   parseCSVText,
   parseExcelBuffer,
@@ -10,21 +11,9 @@ import {
   type Mapping,
   type FieldDef,
 } from '@/lib/validation';
-
-const UploadIcon = () => (
-  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.4">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-    <polyline points="17 8 12 3 7 8" />
-    <line x1="12" y1="3" x2="12" y2="15" />
-  </svg>
-);
-
-const FileIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-    <polyline points="14 2 14 8 20 8" />
-  </svg>
-);
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export interface RawData {
   headers: string[];
@@ -57,27 +46,20 @@ export function UploadMapping({
   const [loading, setLoading] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const canonicalFields = fieldDefs;
-
   const handleFile = (file: File | null | undefined) => {
     if (!file) return;
     setLoading(true);
     const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
     const reader = new FileReader();
-
     reader.onload = (e) => {
       setTimeout(() => {
         let parsed: { headers: string[]; rows: RawRow[] };
         if (isExcel) {
-          const buffer = e.target?.result as ArrayBuffer;
-          parsed = parseExcelBuffer(buffer);
+          parsed = parseExcelBuffer(e.target?.result as ArrayBuffer);
         } else {
-          const text = e.target?.result as string;
-          parsed = parseCSVText(text);
+          parsed = parseCSVText(e.target?.result as string);
         }
-
         const autoMap = autoDetectMapping(parsed.headers);
-        // Merge savedMapping over autoDetect (saved takes priority)
         const mergedMap = savedMapping && Object.keys(savedMapping).length > 0
           ? { ...autoMap, ...savedMapping }
           : autoMap;
@@ -85,12 +67,8 @@ export function UploadMapping({
         setLoading(false);
       }, 400);
     };
-
-    if (isExcel) {
-      reader.readAsArrayBuffer(file);
-    } else {
-      reader.readAsText(file);
-    }
+    if (isExcel) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file);
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -99,154 +77,167 @@ export function UploadMapping({
     handleFile(e.dataTransfer.files[0]);
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => handleFile(e.target.files?.[0]);
-
-  const usedFields = Object.values(mapping).filter((v) => v && v !== '_skip');
-  const hasDupeMapping = usedFields.length !== new Set(usedFields).size;
-
-  const requiredFieldKeys = canonicalFields.filter((f) => f.required).map((f) => f.key);
-  const isValid = rawData && requiredFieldKeys.every((k) => mapping[k]) && !hasDupeMapping;
-
   const previewRows = rawData ? rawData.rows.slice(0, 4) : [];
+  const usedFields = Object.values(mapping).filter((v) => v && v !== '_skip');
+  const hasDupe = usedFields.length !== new Set(usedFields).size;
+  const requiredKeys = fieldDefs.filter((f) => f.required).map((f) => f.key);
+  const isValid = rawData && requiredKeys.every((k) => mapping[k]) && !hasDupe;
+
+  // Count how many are auto-mapped
+  const mappedCount = rawData ? rawData.headers.filter((h) => {
+    const v = Object.entries(mapping).find(([, col]) => col === h)?.[0];
+    return v && v !== '_skip';
+  }).length : 0;
 
   return (
     <>
-      <div className="page-header">
-        <h1 className="page-title">Upload & Map Columns</h1>
-        <p className="page-subtitle">Upload a CSV or Excel file, then verify the column mapping below.</p>
-      </div>
-
+      {/* Drop zone — shown when no file loaded */}
       {!rawData && (
         <div
-          className={`card p-10 mb-5 text-center cursor-pointer border-dashed border-2 transition-colors duration-150 ${
-            dragging ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border-2)] bg-transparent'
-          }`}
+          style={{
+            border: `2px dashed ${dragging ? 'hsl(var(--brand))' : 'hsl(var(--border))'}`,
+            borderRadius: 'var(--radius)',
+            padding: '48px 24px',
+            textAlign: 'center',
+            cursor: 'pointer',
+            transition: 'all 160ms',
+            background: dragging ? 'hsl(var(--brand) / 0.04)' : 'hsl(var(--card))',
+            marginBottom: 24,
+          }}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
         >
-          <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" hidden onChange={handleInputChange} />
-          <div className="flex justify-center mb-3">
-            <UploadIcon />
+          <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" hidden onChange={(e) => handleFile(e.target.files?.[0])} />
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+            <Upload size={40} style={{ color: 'hsl(var(--muted-foreground))', opacity: 0.6 }} />
           </div>
-          <div className="text-lg font-extrabold mb-1.5">Drop your file here</div>
-          <p className="page-subtitle mt-0 mb-4">
-            Expected columns: {canonicalFields.filter((f) => f.required).map((f) => f.label).join(', ')}
+          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>Drop your file here</div>
+          <p style={{ color: 'hsl(var(--muted-foreground))', fontSize: 13, marginBottom: 16 }}>
+            CSV or Excel · Expected: {fieldDefs.filter((f) => f.required).map((f) => f.label).join(', ')}
           </p>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-          >
-            Browse File
-          </button>
+          <Button variant="outline" size="sm" type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
+            Browse file
+          </Button>
         </div>
       )}
 
       {loading && (
-        <div className="h-1 rounded-sm bg-[var(--border-2)] mb-4 overflow-hidden">
-          <div className="skel h-full rounded-sm" />
+        <div style={{ height: 4, borderRadius: 9999, background: 'hsl(var(--muted))', marginBottom: 16, overflow: 'hidden' }}>
+          <div style={{ height: '100%', background: 'hsl(var(--brand))', width: '60%', borderRadius: 9999, animation: 'pulse 1.4s ease-in-out infinite' }} />
         </div>
       )}
 
       {rawData && (
         <>
-          <div className="card px-4 py-3.5 mb-3.5 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="text-[var(--text-3)]"><FileIcon /></span>
-              <div>
-                <div className="font-bold text-sm">{rawData.fileName ?? 'uploaded-file.csv'}</div>
-                <div className="text-xs text-[var(--text-3)]">
-                  {rawData.rows.length} rows · {rawData.headers.length} columns detected
+          {/* File info card */}
+          <Card style={{ marginBottom: 16 }}>
+            <CardContent style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 8, background: 'hsl(var(--brand) / 0.1)', color: 'hsl(var(--brand))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <File size={18} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 500, fontSize: 14 }}>{rawData.fileName ?? 'uploaded-file.csv'}</div>
+                  <div style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>
+                    {rawData.rows.length} rows · {rawData.headers.length} columns detected
+                  </div>
                 </div>
               </div>
-            </div>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onFileLoad(null, {})}>Replace</button>
-          </div>
-
-          <div className="card pad mb-3.5">
-            <div className="label mb-3">Column Mapping</div>
-
-            {hasDupeMapping && (
-              <div className="badge badge-warn mb-3.5 flex gap-2">
-                ⚠️ Some fields are mapped to multiple columns — each field should be mapped once.
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Badge variant="success">
+                  <CheckCircle size={12} /> Auto-mapped {mappedCount} of {rawData.headers.length}
+                </Badge>
+                <Button variant="outline" size="sm" type="button" onClick={() => onFileLoad(null, {})}>
+                  Replace file
+                </Button>
               </div>
-            )}
+            </CardContent>
+          </Card>
 
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2.5">
-              <div className="label">Source Column</div>
-              <div />
-              <div className="label">Maps To</div>
+          {/* Column mapping card */}
+          <Card style={{ marginBottom: 16 }}>
+            <CardHeader>
+              <CardTitle>Column mapping</CardTitle>
+              <CardDescription>Each CSV column maps to a destination field. Required fields are marked with *.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {hasDupe && (
+                <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 'calc(var(--radius) - 2px)', border: '1px solid hsl(var(--warning) / 0.3)', background: 'hsl(var(--warning) / 0.08)', fontSize: 13, color: 'hsl(var(--warning))' }}>
+                  ⚠ Some fields are mapped multiple times — each field should appear once.
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 24px 1fr', gap: 12, alignItems: 'center' }}>
+                {/* Header row */}
+                <div style={{ fontSize: 12, fontWeight: 500, color: 'hsl(var(--muted-foreground))', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Source column</div>
+                <div />
+                <div style={{ fontSize: 12, fontWeight: 500, color: 'hsl(var(--muted-foreground))', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Maps to</div>
 
-              {rawData.headers.map((header) => {
-                const mappedTo = Object.entries(mapping).find(([, v]) => v === header)?.[0];
-                return (
-                  <React.Fragment key={header}>
-                    <div className="field-chip flex flex-wrap items-center gap-1.5 min-w-0">
-                      <span className="font-bold text-[13px]">{header}</span>
-                      {previewRows.slice(0, 2).map((r, i) => (
-                        <span key={i} className="text-[11px] text-[var(--text-3)] bg-[color-mix(in_srgb,var(--text)_6%,transparent)] rounded-md px-1.5 py-[1px]">
-                          {(r as Record<string, unknown>)[header] != null ? String((r as Record<string, unknown>)[header]) : '—'}
-                        </span>
-                      ))}
-                    </div>
+                {rawData.headers.map((header) => {
+                  const mappedTo = Object.entries(mapping).find(([, v]) => v === header)?.[0];
+                  const sampleVal = previewRows[0] ? String((previewRows[0] as Record<string, unknown>)[header] ?? '—') : '—';
+                  return (
+                    <React.Fragment key={header}>
+                      <div style={{ padding: '8px 12px', border: '1px solid hsl(var(--border))', borderRadius: 'calc(var(--radius) - 2px)', background: 'hsl(var(--muted) / 0.4)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span className="mono" style={{ fontWeight: 500, fontSize: 14 }}>{header}</span>
+                        <span style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>e.g. {sampleVal}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'center', color: 'hsl(var(--muted-foreground))' }}>
+                        <Arrow size={14} />
+                      </div>
+                      <select
+                        style={{ height: 36, width: '100%', borderRadius: 'calc(var(--radius) - 2px)', border: '1px solid hsl(var(--input))', background: 'hsl(var(--background))', fontSize: 13, padding: '0 12px', color: 'hsl(var(--foreground))', cursor: 'pointer' }}
+                        value={mappedTo ?? '_skip'}
+                        onChange={(e) => {
+                          const newMap = { ...mapping };
+                          Object.keys(newMap).forEach((k) => { if (newMap[k] === header) delete newMap[k]; });
+                          if (e.target.value !== '_skip') newMap[e.target.value] = header;
+                          onMappingChange(newMap);
+                        }}
+                      >
+                        <option value="_skip">Skip</option>
+                        {fieldDefs.map((f) => (
+                          <option key={f.key} value={f.key}>{f.label}{f.required ? ' *' : ''}</option>
+                        ))}
+                      </select>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
 
-                    <span className="text-center text-[var(--text-3)] text-lg">→</span>
-
-                    <select
-                      className="select"
-                      value={mappedTo ?? '_skip'}
-                      onChange={(e) => {
-                        const newMapping = { ...mapping };
-                        Object.keys(newMapping).forEach((k) => {
-                          if (newMapping[k] === header) delete newMapping[k];
-                        });
-                        if (e.target.value !== '_skip') newMapping[e.target.value] = header;
-                        onMappingChange(newMapping);
-                      }}
-                    >
-                      {canonicalFields.map((f) => (
-                        <option key={f.key} value={f.key}>
-                          {f.label}{f.required ? ' *' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </React.Fragment>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="card mb-5 overflow-hidden">
-            <div className="px-4 py-3 border-b border-[var(--border)]">
-              <div className="label">Data Preview (first 4 rows)</div>
-            </div>
-            <div className="overflow-x-auto">
-              <table>
+          {/* Preview table card */}
+          <Card style={{ marginBottom: 24 }}>
+            <CardHeader>
+              <CardTitle style={{ fontSize: 15 }}>Data preview</CardTitle>
+              <CardDescription>First {previewRows.length} rows after applying the mapping above.</CardDescription>
+            </CardHeader>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
-                  <tr>
+                  <tr style={{ background: 'hsl(var(--muted) / 0.4)' }}>
                     {Object.keys(mapping)
                       .filter((k) => mapping[k] && mapping[k] !== '_skip')
                       .map((field) => (
-                        <th key={field}>
-                          {canonicalFields.find((f) => f.key === field)?.label ?? field}
+                        <th key={field} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, fontWeight: 500, color: 'hsl(var(--muted-foreground))', borderBottom: '1px solid hsl(var(--border))' }}>
+                          {fieldDefs.find((f) => f.key === field)?.label ?? field}
+                          {fieldDefs.find((f) => f.key === field)?.required ? ' *' : ''}
                         </th>
                       ))}
                   </tr>
                 </thead>
                 <tbody>
                   {previewRows.map((row, i) => {
-                    const mapped = applyMapping([row], mapping)[0];
+                    const mapped = applyMapping([row], mapping)[0] as Record<string, unknown>;
                     return (
-                      <tr key={i}>
+                      <tr key={i} style={{ borderBottom: i < previewRows.length - 1 ? '1px solid hsl(var(--border))' : 'none' }}>
                         {Object.keys(mapping)
                           .filter((k) => mapping[k] && mapping[k] !== '_skip')
                           .map((field) => (
-                            <td key={field} className="text-[13px]">
-                              {(mapped as unknown as Record<string, unknown>)[field] != null
-                                ? String((mapped as unknown as Record<string, unknown>)[field])
-                                : <span className="opacity-30">—</span>}
+                            <td key={field} style={{ padding: '10px 14px', fontSize: 14 }}>
+                              {mapped[field] != null ? String(mapped[field]) : <span style={{ color: 'hsl(var(--muted-foreground))' }}>—</span>}
                             </td>
                           ))}
                       </tr>
@@ -255,15 +246,18 @@ export function UploadMapping({
                 </tbody>
               </table>
             </div>
-          </div>
+          </Card>
         </>
       )}
 
-      <div className="flex justify-between gap-2.5">
-        <button type="button" className="btn btn-secondary" onClick={onBack}>← Back</button>
-        <button type="button" className="btn btn-primary btn-lg" onClick={onNext} disabled={!isValid}>
-          Review Data →
-        </button>
+      {/* Footer nav */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Button variant="outline" onClick={onBack}>
+          <ArrowLeft size={14} /> Back
+        </Button>
+        <Button size="lg" onClick={onNext} disabled={!isValid}>
+          Review data <ArrowRight size={14} />
+        </Button>
       </div>
     </>
   );

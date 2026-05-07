@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { ArrowLeft, ArrowRight, CheckCircle, Loader2 } from 'lucide-react';
 import { ReviewTable } from './ReviewTable';
 import {
   validateAllRowsForEndpoint,
@@ -10,19 +11,17 @@ import {
 } from '@/lib/validation';
 import type { ProjectEndpoint } from '@/lib/schemas';
 import { saveEndpointMapping } from '@/actions/projects';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type Project = any;
 
-const IMPORT_MODES = [
-  { key: 'dryrun',     label: 'Dry Run',         desc: 'Validate only — no API calls made',      icon: '🔍' },
-  { key: 'valid_only', label: 'Valid Rows Only',  desc: 'Skip rows with errors',                 icon: '✅' },
-  { key: 'full',       label: 'Full Import',      desc: 'Import all rows, report failures inline', icon: '🚀' },
-] as const;
-
-type ImportMode = (typeof IMPORT_MODES)[number]['key'];
+type ImportMode = 'dryrun' | 'valid_only' | 'full';
 type Phase = 'review' | 'running' | 'done';
-
-interface Summary { successCount: number; failedCount: number; skippedCount: number; total: number; }
+interface Summary { successCount: number; failedCount: number; skippedCount: number; total: number; elapsed?: number; }
 
 export interface ReviewStepProps {
   rows: MappedRow[];
@@ -50,30 +49,30 @@ export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate
   React.useEffect(() => { setImportedRows(rows); }, [rows]);
 
   const errorRows = importedRows.filter((r) => Object.keys(r._errors ?? {}).length > 0);
-  const validRows  = importedRows.filter((r) => Object.keys(r._errors ?? {}).length === 0);
+  const validRows = importedRows.filter((r) => Object.keys(r._errors ?? {}).length === 0);
+
+  const willImportCount = importMode === 'dryrun' ? 0 : importMode === 'valid_only' ? validRows.length : importedRows.length;
 
   const handleImport = async () => {
     setUrlError(null);
-
     if (!config?.baseUrl?.trim()) {
       setUrlError('Project Base URL is not configured — go to Settings to add it before importing.');
       return;
     }
-
     const toImport = importMode === 'valid_only' ? validRows : importedRows;
     if (toImport.length === 0) return;
 
     setPhase('running');
     setProgress(0);
     setCurrentRow(0);
+    const startTime = Date.now();
 
     const results: MappedRow[] = importedRows.map((r) =>
       importMode === 'valid_only' && Object.keys(r._errors ?? {}).length > 0
         ? { ...r, _status: 'skipped' as const }
         : { ...r }
     );
-
-    const headers  = buildAuthHeaders(config?.auth);
+    const headers = buildAuthHeaders(config?.auth);
 
     for (let i = 0; i < toImport.length; i++) {
       const row = toImport[i];
@@ -106,65 +105,53 @@ export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate
       setImportedRows([...results]);
     }
 
+    const elapsed = Math.round((Date.now() - startTime) / 100) / 10;
     const successCount = results.filter((r) => r._status === 'success').length;
-    const failedCount  = results.filter((r) => r._status === 'failed').length;
+    const failedCount = results.filter((r) => r._status === 'failed').length;
     const skippedCount = results.filter((r) => r._status === 'skipped').length;
-    setSummary({ successCount, failedCount, skippedCount, total: importedRows.length });
+    setSummary({ successCount, failedCount, skippedCount, total: importedRows.length, elapsed });
     setImportedRows([...results]);
     setPhase('done');
 
-    // Save mapping after successful import
     if (successCount > 0 && mapping && config?._id) {
       const cleanMapping: Record<string, string> = {};
       for (const [k, v] of Object.entries(mapping)) {
         if (v && v !== '_skip') cleanMapping[k] = v;
       }
-      try {
-        await saveEndpointMapping(String(config._id), endpoint.id, cleanMapping);
-      } catch {
-        // Non-critical — mapping save failure shouldn't block the user
-      }
+      try { await saveEndpointMapping(String(config._id), endpoint.id, cleanMapping); } catch { /* non-critical */ }
     }
   };
 
   const handleRetryFailed = async () => {
     const failed = importedRows.filter((r) => r._status === 'failed');
     if (failed.length === 0) return;
-
     setPhase('running');
     setProgress(0);
-
-    const results: MappedRow[] = [...importedRows];
-    const headers  = buildAuthHeaders(config?.auth);
+    const results = [...importedRows];
+    const headers = buildAuthHeaders(config?.auth);
 
     for (let i = 0; i < failed.length; i++) {
       const row = failed[i];
       if (!row) continue;
       const rowIdx = results.findIndex((r) => r._id === row._id);
       if (rowIdx === -1) continue;
-
       try {
         const res = await fetch(`${config.baseUrl}${endpoint.path}`, {
-          method: endpoint.method ?? 'POST',
-          headers,
+          method: endpoint.method ?? 'POST', headers,
           body: JSON.stringify(buildEndpointPayload(row, endpoint)),
         });
-        if (res.ok) {
-          results[rowIdx] = { ...results[rowIdx]!, _status: 'success', _errorMsg: null };
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          results[rowIdx] = { ...results[rowIdx]!, _status: 'failed', _errorMsg: errData.message || `HTTP ${res.status}` };
-        }
+        results[rowIdx] = res.ok
+          ? { ...results[rowIdx]!, _status: 'success', _errorMsg: null }
+          : { ...results[rowIdx]!, _status: 'failed', _errorMsg: (await res.json().catch(() => ({}))).message || `HTTP ${res.status}` };
       } catch (e) {
         results[rowIdx] = { ...results[rowIdx]!, _status: 'failed', _errorMsg: e instanceof Error ? e.message : 'Network error' };
       }
-
       setProgress(Math.round(((i + 1) / failed.length) * 100));
       setImportedRows([...results]);
     }
 
     const successCount = results.filter((r) => r._status === 'success').length;
-    const failedCount  = results.filter((r) => r._status === 'failed').length;
+    const failedCount = results.filter((r) => r._status === 'failed').length;
     const skippedCount = results.filter((r) => r._status === 'skipped').length;
     setSummary({ successCount, failedCount, skippedCount, total: importedRows.length });
     setImportedRows([...results]);
@@ -172,114 +159,120 @@ export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate
   };
 
   return (
-    <div className="w-full">
-      <div className="page-header flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="page-title">{phase === 'done' ? 'Import Complete' : 'Review & Import'}</h1>
-          <p className="page-subtitle">
-            {phase === 'done'
-              ? `${summary?.successCount} imported · ${summary?.failedCount} failed · ${summary?.skippedCount} skipped`
-              : `${importedRows.length} rows · ${validRows.length} valid · ${errorRows.length} with errors`}
-          </p>
+    <div style={{ width: '100%' }}>
+      {/* URL error */}
+      {urlError && (
+        <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 'calc(var(--radius) - 2px)', border: '1px solid hsl(var(--destructive) / 0.3)', background: 'hsl(var(--destructive) / 0.06)', color: 'hsl(var(--destructive))', fontSize: 13 }}>
+          ⚠ {urlError}
+        </div>
+      )}
+
+      {/* Summary stat strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+        {[
+          { label: 'Total rows', value: importedRows.length, color: undefined },
+          { label: 'Valid', value: validRows.length, color: 'hsl(var(--success))' },
+          { label: 'Errors', value: errorRows.length, color: 'hsl(var(--destructive))' },
+          { label: 'Will import', value: willImportCount, color: 'hsl(var(--brand))' },
+        ].map((s, i) => (
+          <Card key={i} style={{ padding: 16 }}>
+            <div style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))', marginBottom: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: s.color ?? 'hsl(var(--foreground))' }}>
+              {s.value}
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Controls row: mode + filter */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>Mode</span>
+          <Tabs value={importMode} onValueChange={(v) => setImportMode(v as ImportMode)}>
+            <TabsList>
+              <TabsTrigger value="dryrun">Dry run</TabsTrigger>
+              <TabsTrigger value="valid_only">Valid only</TabsTrigger>
+              <TabsTrigger value="full">Full import</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
         {phase === 'review' && errorRows.length > 0 && (
-          <span className="badge badge-warn">⚠️ Fix {errorRows.length} error{errorRows.length > 1 ? 's' : ''} before full import</span>
+          <Badge variant="warning">⚠ {errorRows.length} error{errorRows.length > 1 ? 's' : ''} need attention</Badge>
         )}
       </div>
 
-      {urlError && (
-        <div className="badge badge-danger mb-4 w-full justify-start gap-2" style={{ padding: '10px 14px', fontSize: 13 }}>
-          ⚠️ {urlError}
-        </div>
-      )}
-
-      {phase === 'review' && (
-        <div className="flex flex-wrap gap-3 mb-6">
-          {IMPORT_MODES.map((mode) => (
-            <div
-              key={mode.key}
-              className={`card p-3.5 cursor-pointer flex-1 min-w-[180px] transition-colors duration-150 ${
-                importMode === mode.key
-                  ? 'border-[2px] border-[var(--accent)] bg-[var(--accent-soft)]'
-                  : 'border border-[var(--border)] bg-[var(--surface)]'
-              }`}
-              onClick={() => setImportMode(mode.key)}
-            >
-              <div className="font-bold mb-1"><span className="mr-1.5">{mode.icon}</span>{mode.label}</div>
-              <div className="text-xs text-[var(--text-3)]">{mode.desc}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
+      {/* Running phase */}
       {phase === 'running' && (
-        <div className="card pad mb-6">
-          <div className="flex items-center gap-2.5 mb-3">
-            <span className="spin text-[18px]">⟳</span>
-            <span className="font-bold text-sm">
-              {importMode === 'dryrun' ? 'Validating' : 'Importing'} rows... ({currentRow} / {importedRows.length})
-            </span>
-          </div>
-          <div className="h-2 rounded bg-[var(--border-2)] overflow-hidden">
-            <div className="h-full bg-[var(--accent)] rounded transition-all duration-100 ease-out" style={{ width: `${progress}%` }} />
-          </div>
-          <div className="mt-1.5 text-xs text-[var(--text-3)]">{progress}% complete</div>
-        </div>
-      )}
-
-      {phase === 'done' && summary && (
-        <div className="flex flex-wrap gap-3 mb-6">
-          {[
-            { label: 'Total',    val: summary.total,        cls: '' },
-            { label: 'Imported', val: summary.successCount, cls: 'badge-ok' },
-            { label: 'Failed',   val: summary.failedCount,  cls: 'badge-danger' },
-            { label: 'Skipped',  val: summary.skippedCount, cls: '' },
-          ].map((s) => (
-            <div key={s.label} className="card px-5 py-4 flex-1 min-w-[100px] text-center">
-              <div className={`text-4xl font-black leading-[1.1] ${s.cls === 'badge-ok' ? 'text-[var(--ok)]' : s.cls === 'badge-danger' ? 'text-[var(--danger)]' : 'text-[var(--text)]'}`}>
-                {s.val}
-              </div>
-              <div className="label mt-1">{s.label}</div>
+        <Card style={{ marginBottom: 16, padding: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Loader2 size={16} className="spin" style={{ color: 'hsl(var(--brand))' }} />
+              <span style={{ fontWeight: 500, fontSize: 14 }}>
+                {importMode === 'dryrun' ? 'Validating' : 'Importing'}… {currentRow} of {importedRows.length}
+              </span>
             </div>
-          ))}
+            <span className="mono" style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>{progress}%</span>
+          </div>
+          <Progress value={progress} />
+        </Card>
+      )}
+
+      {/* Done phase */}
+      {phase === 'done' && summary && (
+        <div
+          style={{
+            marginBottom: 16, padding: 16, borderRadius: 'calc(var(--radius) - 2px)',
+            border: '1px solid hsl(var(--success) / 0.3)',
+            background: 'hsl(var(--success) / 0.06)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <CheckCircle size={20} style={{ color: 'hsl(var(--success))', flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>Import complete</div>
+              <div style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))', marginTop: 2 }}>
+                {summary.successCount} succeeded · {summary.skippedCount} skipped · {summary.failedCount} failed{summary.elapsed ? ` · ${summary.elapsed}s` : ''}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {summary.failedCount > 0 && (
+              <Button variant="outline" size="sm" onClick={handleRetryFailed}>
+                Retry {summary.failedCount} failed
+              </Button>
+            )}
+            <Button size="sm" onClick={onStartNew}>Start new import</Button>
+          </div>
         </div>
       )}
 
+      {/* Data table */}
       <ReviewTable
         rows={importedRows}
         fields={fields}
-        onRowUpdate={(id, field, val) => {
-          const updated = importedRows.map((r) => (r._id === id ? { ...r, [field]: val } : r));
-          onRowUpdate(validateAllRowsForEndpoint(updated, endpoint));
-        }}
+        onRowUpdate={(id, field, val) => onRowUpdate(validateAllRowsForEndpoint(importedRows.map((r) => (r._id === id ? { ...r, [field]: val } : r)), endpoint))}
         onDeleteSelected={(ids) => onDeleteSelected(importedRows.filter((r) => !ids.includes(r._id)))}
         filter={filter}
         onFilterChange={setFilter}
         showImportStatus={phase !== 'review'}
       />
 
-      <div className="h-px bg-[var(--border)] my-6" />
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <button type="button" className="btn btn-secondary" onClick={onBack} disabled={phase === 'running'}>← Back</button>
+      {/* Footer nav */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 20 }}>
+        <Button variant="outline" onClick={onBack} disabled={phase === 'running'}>
+          <ArrowLeft size={14} /> Back to mapping
+        </Button>
 
         {phase === 'review' && (
-          <button type="button" className="btn btn-primary btn-lg" onClick={handleImport} disabled={importedRows.length === 0}>
-            {importMode === 'dryrun'     ? '🔍 Run Dry Run'
-             : importMode === 'valid_only' ? `✅ Import ${validRows.length} Valid Rows`
-             : `🚀 Import All ${importedRows.length} Rows`}
-          </button>
-        )}
-
-        {phase === 'done' && (
-          <div className="flex flex-wrap gap-2.5">
-            {(summary?.failedCount ?? 0) > 0 && (
-              <button type="button" className="btn btn-secondary" onClick={handleRetryFailed}>
-                Retry {summary?.failedCount} Failed
-              </button>
-            )}
-            <button type="button" className="btn btn-primary btn-lg" onClick={onStartNew}>Start New Import</button>
-          </div>
+          <Button size="lg" onClick={handleImport} disabled={importedRows.length === 0}>
+            {importMode === 'dryrun'
+              ? 'Run dry validation'
+              : importMode === 'valid_only'
+              ? `Import ${validRows.length} valid rows`
+              : `Import all ${importedRows.length} rows`}
+            <ArrowRight size={14} />
+          </Button>
         )}
       </div>
     </div>

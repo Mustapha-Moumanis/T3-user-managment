@@ -1,11 +1,23 @@
 'use client';
 
 import React from 'react';
+import { CheckCircle, Loader2 } from 'lucide-react';
 import { EMAIL_RE, buildEndpointPayload, buildAuthHeaders, getFieldDefsForEndpoint } from '@/lib/validation';
 import type { ProjectEndpoint } from '@/lib/schemas';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 
 type Project = any;
-
 type SubmitStatus = null | 'loading' | 'success' | 'error';
 
 export interface AddUserModalProps {
@@ -24,7 +36,6 @@ export function AddUserModal({ open, onClose, config }: AddUserModalProps) {
   const [errorMsg, setErrorMsg] = React.useState('');
 
   const selectedEndpoint = endpoints.find((e) => e.id === selectedEndpointId) ?? null;
-
   const activeFields = selectedEndpoint
     ? getFieldDefsForEndpoint(selectedEndpoint).filter((f) => f.key !== '_skip')
     : [];
@@ -37,13 +48,9 @@ export function AddUserModal({ open, onClose, config }: AddUserModalProps) {
   const validate = (): Record<string, string> => {
     const errs: Record<string, string> = {};
     const emailVal = form.email?.trim();
-    if (!emailVal) {
-      errs.email = 'Email is required';
-    } else if (!EMAIL_RE.test(emailVal)) {
-      errs.email = 'Invalid email format';
-    }
-    const nameVal = form.name?.trim();
-    if (!nameVal) errs.name = 'Name is required';
+    if (!emailVal) errs.email = 'Email is required';
+    else if (!EMAIL_RE.test(emailVal)) errs.email = 'Invalid email format';
+    if (!form.name?.trim()) errs.name = 'Name is required';
     for (const f of activeFields) {
       if (f.key === 'email' || f.key === 'name') continue;
       if (f.required && !form[f.key]?.trim()) errs[f.key] = `${f.label} is required`;
@@ -55,18 +62,14 @@ export function AddUserModal({ open, onClose, config }: AddUserModalProps) {
     if (!selectedEndpoint) return;
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
-
     setStatus('loading');
-
     const row = { _id: 'single', ...Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v.trim()])) };
-
     try {
       const res = await fetch(`${config?.baseUrl}${selectedEndpoint.path}`, {
         method: selectedEndpoint.method ?? 'POST',
         headers: buildAuthHeaders(config?.auth),
         body: JSON.stringify(buildEndpointPayload(row as any, selectedEndpoint)),
       });
-
       if (res.ok) {
         setStatus('success');
       } else {
@@ -89,62 +92,44 @@ export function AddUserModal({ open, onClose, config }: AddUserModalProps) {
     onClose();
   };
 
-  React.useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose(); };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open]);
-
-  if (!open) return null;
-
   return (
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Add single user"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) handleClose(); }}
-    >
-      <div className="card modal">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-[18px] font-extrabold tracking-[-0.01em]">Add Single User</div>
-            <div className="crumb">Create one user via <strong>{config?.name ?? 'project'}</strong></div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="badge badge-accent">{config?.auth?.type?.toUpperCase() ?? 'BEARER'}</span>
-            <button type="button" className="btn btn-ghost btn-icon" onClick={handleClose} aria-label="Close">✕</button>
-          </div>
-        </div>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add single user</DialogTitle>
+          <DialogDescription>Create one user without uploading a CSV.</DialogDescription>
+        </DialogHeader>
 
-        <div className="mt-4">
+        <div style={{ padding: '0 24px 8px' }}>
           {status === 'success' ? (
-            <div className="empty p-2.5">
-              <div className="text-4xl mb-1.5">✅</div>
-              <div className="text-lg font-black mb-1.5">User Created!</div>
-              <div className="text-[var(--text-2)] mb-3.5">
-                <strong>{form.name}</strong> <span className="mono">({form.email})</span> was added successfully.
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 0', gap: 12 }}>
+              <CheckCircle size={40} style={{ color: 'hsl(var(--success))' }} />
+              <div style={{ fontWeight: 600, fontSize: 16 }}>User created!</div>
+              <div style={{ fontSize: 14, color: 'hsl(var(--muted-foreground))', textAlign: 'center' }}>
+                <strong>{form.name}</strong>{' '}
+                <span className="mono" style={{ fontSize: 13 }}>({form.email})</span>
+                {' '}was added successfully.
               </div>
-              <button type="button" className="btn btn-primary btn-lg" onClick={handleClose}>Done</button>
             </div>
           ) : (
-            <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {status === 'error' && (
-                <div className="badge badge-danger mb-3 justify-center">{errorMsg}</div>
+                <Badge variant="destructive" style={{ justifyContent: 'center', width: '100%', padding: '6px 12px', height: 'auto', borderRadius: 'calc(var(--radius) - 2px)' }}>
+                  {errorMsg}
+                </Badge>
               )}
 
               {endpoints.length === 0 ? (
-                <div className="text-sm text-[var(--text-3)] text-center py-6">
-                  No endpoints configured.<br />
-                  Go to project settings and add an endpoint.
+                <div style={{ textAlign: 'center', padding: '24px 0', fontSize: 14, color: 'hsl(var(--muted-foreground))' }}>
+                  No endpoints configured.<br />Go to project settings and add an endpoint.
                 </div>
               ) : (
                 <>
-                  <div className="field mb-3">
-                    <div className="label">Endpoint *</div>
+                  {/* User type select */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <Label>User type</Label>
                     <select
-                      className="select w-full"
+                      style={{ height: 36, width: '100%', borderRadius: 'calc(var(--radius) - 2px)', border: '1px solid hsl(var(--input))', background: 'hsl(var(--background))', fontSize: 14, padding: '0 12px', color: 'hsl(var(--foreground))' }}
                       value={selectedEndpointId}
                       onChange={(e) => { setSelectedEndpointId(e.target.value); setForm({}); setErrors({}); }}
                       disabled={status === 'loading'}
@@ -154,58 +139,52 @@ export function AddUserModal({ open, onClose, config }: AddUserModalProps) {
                         <option key={ep.id} value={ep.id}>{ep.label || ep.path}</option>
                       ))}
                     </select>
+                    {selectedEndpoint && config?.baseUrl && (
+                      <div className="mono" style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>
+                        POSTs to {config.baseUrl}{selectedEndpoint.path}
+                      </div>
+                    )}
                   </div>
 
+                  {/* Dynamic field grid */}
                   {selectedEndpoint && (
-                    <div className="grid grid-cols-2 gap-3">
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                       {activeFields.map((f) => (
-                        <div key={f.key} className={`field ${f.type === 'array' ? 'col-span-full' : ''}`}>
-                          <div className="label">{f.label} {f.required ? '*' : ''}</div>
-                          <input
-                            className="input"
+                        <div key={f.key} style={{ gridColumn: f.type === 'array' ? '1 / -1' : undefined, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <Label>{f.label}{f.required ? ' *' : ''}</Label>
+                          <Input
+                            className={f.key === 'email' || f.key === 'codeCentre' || f.key === 'codeAref' ? 'mono' : undefined}
                             value={form[f.key] ?? ''}
                             onChange={(e) => handleChange(f.key, e.target.value)}
                             disabled={status === 'loading'}
-                            placeholder={f.key === 'email' ? 'user@example.com' : f.type === 'array' ? 'value1, value2, value3' : ''}
+                            placeholder={f.key === 'email' ? 'user@example.com' : f.type === 'array' ? 'value1, value2' : ''}
                           />
-                          {errors[f.key] && <div className="error">{errors[f.key]}</div>}
+                          {errors[f.key] && (
+                            <span style={{ fontSize: 12, color: 'hsl(var(--destructive))' }}>{errors[f.key]}</span>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
-
-                  {config?.baseUrl && selectedEndpoint && (
-                    <div className="mt-3">
-                      <span className="badge">
-                        {selectedEndpoint.method ?? 'POST'} to <code className="mono">{config.baseUrl}{selectedEndpoint.path}</code>
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="flex justify-end gap-2.5 mt-4">
-                    <button type="button" className="btn btn-secondary" onClick={handleClose} disabled={status === 'loading'}>
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-lg"
-                      onClick={handleSubmit}
-                      disabled={status === 'loading' || !selectedEndpoint}
-                    >
-                      {status === 'loading' ? (
-                        <span className="inline-flex items-center gap-2">
-                          <span className="spin" aria-hidden>⟳</span>
-                          Creating...
-                        </span>
-                      ) : 'Create User'}
-                    </button>
-                  </div>
                 </>
               )}
-            </>
+            </div>
           )}
         </div>
-      </div>
-    </div>
+
+        <DialogFooter>
+          {status === 'success' ? (
+            <Button onClick={handleClose}>Done</Button>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={handleClose} disabled={status === 'loading'}>Cancel</Button>
+              <Button onClick={handleSubmit} disabled={status === 'loading' || !selectedEndpoint}>
+                {status === 'loading' ? <><Loader2 size={14} className="spin" /> Creating…</> : 'Create user'}
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
