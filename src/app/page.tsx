@@ -12,7 +12,7 @@ async function getProjects() {
     id: String(p._id),
     name: p.name,
     description: p.description || "",
-    color: p.color || "indigo",
+    color: p.color || "blue",
     starred: !!p.starred,
     baseUrl: p.baseUrl || "",
     auth: p.auth || {},

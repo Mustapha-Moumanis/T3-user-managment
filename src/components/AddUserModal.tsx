@@ -2,8 +2,9 @@
 
 import React from 'react';
 import { CheckCircle, Loader2 } from 'lucide-react';
-import { EMAIL_RE, buildEndpointPayload, buildAuthHeaders, getFieldDefsForEndpoint } from '@/lib/validation';
+import { EMAIL_RE, buildEndpointPayload, buildAuthHeaders, getFieldDefsForEndpoint, type ProcessedRow } from '@/lib/validation';
 import type { ProjectEndpoint } from '@/lib/schemas';
+import type { ProjectDto } from '@/lib/types';
 import {
   Dialog,
   DialogContent,
@@ -17,13 +18,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 
-type Project = any;
 type SubmitStatus = null | 'loading' | 'success' | 'error';
 
 export interface AddUserModalProps {
   open: boolean;
   onClose: () => void;
-  config: Project | null;
+  config: ProjectDto | null;
 }
 
 export function AddUserModal({ open, onClose, config }: AddUserModalProps) {
@@ -59,16 +59,26 @@ export function AddUserModal({ open, onClose, config }: AddUserModalProps) {
   };
 
   const handleSubmit = async () => {
-    if (!selectedEndpoint) return;
+    if (!selectedEndpoint || !config) return;
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setStatus('loading');
-    const row = { _id: 'single', ...Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v.trim()])) };
+
+    const data: Record<string, string> = Object.fromEntries(
+      Object.entries(form).map(([k, v]) => [k, v.trim()])
+    );
+    const row: ProcessedRow = {
+      _id: 'single',
+      data,
+      validation: { errors: {} },
+      import: { status: 'pending' },
+    };
+
     try {
-      const res = await fetch(`${config?.baseUrl}${selectedEndpoint.path}`, {
+      const res = await fetch(`${config.baseUrl}${selectedEndpoint.path}`, {
         method: selectedEndpoint.method ?? 'POST',
-        headers: buildAuthHeaders(config?.auth),
-        body: JSON.stringify(buildEndpointPayload(row as any, selectedEndpoint)),
+        headers: buildAuthHeaders(config.auth),
+        body: JSON.stringify(buildEndpointPayload(row, selectedEndpoint)),
       });
       if (res.ok) {
         setStatus('success');

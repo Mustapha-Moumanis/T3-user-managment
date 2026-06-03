@@ -11,5 +11,9 @@ export default async function ImportPage({ params }: { params: Promise<{ project
 
   const p = JSON.parse(JSON.stringify({ ...project, id: String(project._id), endpoints: project.endpoints ?? [] }));
 
-  return <ImportClient project={p} />;
+  const globalAllowedDomains = process.env.ALLOWED_EMAIL_DOMAINS
+    ? process.env.ALLOWED_EMAIL_DOMAINS.split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  return <ImportClient project={p} globalAllowedDomains={globalAllowedDomains} />;
 }

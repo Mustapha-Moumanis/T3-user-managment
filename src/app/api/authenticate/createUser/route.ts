@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
   const body: Record<string, unknown> = await req.json().catch(() => ({}));
   const userType = String(body.userType ?? '');
   const email = String(body.email ?? '').trim().toLowerCase();
-  const fullName = String(body.fullName ?? body.full_name ?? '').trim();
+  const name = String(body.name ?? '').trim();
 
   if (!ROUTED_TYPES.includes(userType)) {
     return err(`unsupported userType: ${userType}. Expected one of: ${ROUTED_TYPES.join(', ')}`);
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     message: 'User created successfully',
     user: {
       email,
-      fullName,
+      name,
       userType,
       ...(body.codeCentre ? { codeCentre: body.codeCentre } : {}),
       ...(body.codeAref ? { codeAref: body.codeAref } : {}),

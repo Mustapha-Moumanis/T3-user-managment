@@ -24,7 +24,7 @@ export function ProjectCard({ project }: { project: any }) {
   const [deleting, setDeleting] = useState(false);
   const [starred, setStarred] = useState(project.starred);
 
-  const dotColor = ACCENT_DOT[project.color] ?? "#6366f1";
+  const dotColor = ACCENT_DOT[project.color] ?? "#3b82f6";
   const endpointCount = project.endpoints?.length || 0;
   const authType = project.auth?.type || project.auth?.method || "bearer";
 

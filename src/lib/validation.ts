@@ -14,15 +14,32 @@ export interface RawRow extends Record<string, string> {
   _id: string;
 }
 
-export interface MappedRow {
+export interface ProcessedRow {
   _id: string;
-  [key: string]: string | Record<string, string> | 'success' | 'failed' | 'skipped' | null | undefined;
-  _errors?: Record<string, string>;
-  _status?: 'success' | 'failed' | 'skipped' | null;
-  _errorMsg?: string | null;
+  data: Record<string, string>;
+  validation: {
+    errors: Record<string, string>;
+  };
+  import: {
+    status: 'pending' | 'sending' | 'success' | 'server-error' | 'skipped';
+    errorMessage?: string | null;
+  };
 }
 
 export type Mapping = Partial<Record<string, string>>;
+
+// ── CSV serialisation ─────────────────────────────────────────────────────────
+
+export function rowsToCSV(headers: string[], rows: RawRow[]): string {
+  const esc = (v: string) =>
+    v.includes(',') || v.includes('"') || v.includes('\n')
+      ? `"${v.replace(/"/g, '""')}"`
+      : v;
+  return [
+    headers.map(esc).join(','),
+    ...rows.map((r) => headers.map((h) => esc(r[h] ?? '')).join(',')),
+  ].join('\n');
+}
 
 // ── CSV parsing ───────────────────────────────────────────────────────────────
 
@@ -122,21 +139,24 @@ export function autoDetectMapping(headers: string[]): Mapping {
 
 // ── Apply mapping ─────────────────────────────────────────────────────────────
 
-export function applyMapping(rows: RawRow[], mapping: Mapping): MappedRow[] {
+export function applyMapping(rows: RawRow[], mapping: Mapping): ProcessedRow[] {
   return rows.map((row) => {
-    const mapped: MappedRow = { _id: row._id };
+    const data: Record<string, string> = {};
     for (const [field, srcCol] of Object.entries(mapping)) {
-      if (srcCol && row[srcCol] !== undefined) {
-        (mapped as Record<string, unknown>)[field] = row[srcCol] ?? '';
+      if (srcCol && srcCol !== '_skip' && row[srcCol] !== undefined) {
+        data[field] = row[srcCol] ?? '';
       }
     }
     // Combine first/last name if separate columns but no "name" mapping
-    const firstName = (mapped as Record<string, unknown>)['first_name'] as string | undefined;
-    const lastName = (mapped as Record<string, unknown>)['last_name'] as string | undefined;
-    if (!(mapped as Record<string, unknown>)['name'] && (firstName || lastName)) {
-      (mapped as Record<string, unknown>)['name'] = [firstName, lastName].filter(Boolean).join(' ');
+    if (!data['name'] && (data['first_name'] || data['last_name'])) {
+      data['name'] = [data['first_name'], data['last_name']].filter(Boolean).join(' ');
     }
-    return mapped;
+    return {
+      _id: row._id,
+      data,
+      validation: { errors: {} },
+      import: { status: 'pending' as const },
+    };
   });
 }
 
@@ -153,17 +173,15 @@ export function getFieldDefsForEndpoint(endpoint: ProjectEndpoint): FieldDef[] {
 // ── Endpoint payload builder ──────────────────────────────────────────────────
 
 export function buildEndpointPayload(
-  row: MappedRow,
+  row: ProcessedRow,
   endpoint: ProjectEndpoint,
 ): Record<string, unknown> {
   const allFields = [...(endpoint.requiredFields || []), ...(endpoint.optionalFields || [])];
   const payload: Record<string, unknown> = {};
-  if (endpoint.bodyKey) payload.userType = endpoint.bodyKey;
   for (const f of allFields) {
-    const val = (row as Record<string, string>)[f.key];
+    const val = row.data[f.key];
     if (!val?.trim()) continue;
-    const payloadKey = f.key === 'name' ? 'fullName' : f.key;
-    payload[payloadKey] = f.type === 'array'
+    payload[f.key] = f.type === 'array'
       ? val.split(',').map((s) => s.trim()).filter(Boolean)
       : f.type === 'number'
         ? Number(val)
@@ -175,35 +193,45 @@ export function buildEndpointPayload(
 // ── Endpoint-driven validation ────────────────────────────────────────────────
 
 function validateRowForEndpoint(
-  row: MappedRow,
-  allRows: MappedRow[],
+  data: Record<string, string>,
+  allData: Record<string, string>[],
   existingEmails: Set<string>,
   rowIndex: number,
   endpoint: ProjectEndpoint,
+  globalDomains: string[],
 ): Record<string, string> {
   const errors: Record<string, string> = {};
 
-  const emailVal = (row as Record<string, string>)['email'];
+  const emailVal = data['email'];
   if (!emailVal?.trim()) {
     errors['email'] = 'Email is required';
   } else if (!EMAIL_RE.test(emailVal.trim())) {
     errors['email'] = 'Invalid email format';
   } else {
-    const dupeIdx = allRows.findIndex(
-      (r, i) =>
-        i !== rowIndex &&
-        (r as Record<string, string>)['email']?.trim().toLowerCase() === emailVal.trim().toLowerCase(),
-    );
-    if (dupeIdx !== -1) errors['email'] = `Duplicate of row ${dupeIdx + 1}`;
-    if (existingEmails.has(emailVal.trim().toLowerCase())) errors['email'] = 'Already exists in system';
+    // Merge global env domains with per-endpoint domains; empty = allow all
+    const effectiveDomains = [
+      ...new Set([...globalDomains, ...(endpoint.emailDomainAllowlist ?? [])]),
+    ];
+    if (effectiveDomains.length > 0) {
+      const domain = emailVal.trim().split('@')[1]?.toLowerCase() ?? '';
+      if (!effectiveDomains.some((d) => d.toLowerCase() === domain)) {
+        errors['email'] = `Email domain must be: ${effectiveDomains.join(', ')}`;
+      }
+    }
+    if (!errors['email']) {
+      const dupeIdx = allData.findIndex(
+        (r, i) =>
+          i !== rowIndex &&
+          r['email']?.trim().toLowerCase() === emailVal.trim().toLowerCase(),
+      );
+      if (dupeIdx !== -1) errors['email'] = `Duplicate of row ${dupeIdx + 1}`;
+      if (existingEmails.has(emailVal.trim().toLowerCase())) errors['email'] = 'Already exists in system';
+    }
   }
 
-  const nameVal = (row as Record<string, string>)['name'];
-  if (!nameVal?.trim()) errors['name'] = 'Name is required';
-
   for (const f of (endpoint.requiredFields || [])) {
-    if (f.key === 'email' || f.key === 'name') continue;
-    const val = (row as Record<string, string>)[f.key];
+    if (f.key === 'email') continue;
+    const val = data[f.key];
     if (!val?.trim()) {
       errors[f.key] = `${f.label} is required`;
     }
@@ -213,14 +241,18 @@ function validateRowForEndpoint(
 }
 
 export function validateAllRowsForEndpoint(
-  rows: MappedRow[],
+  rows: ProcessedRow[],
   endpoint: ProjectEndpoint,
   existingEmails = new Set<string>(),
-): MappedRow[] {
+  globalDomains: string[] = [],
+): ProcessedRow[] {
+  const allData = rows.map((r) => r.data);
   return rows.map((row, i) => ({
     ...row,
-    _errors: validateRowForEndpoint(row, rows, existingEmails, i, endpoint),
-    _status: null,
+    validation: {
+      errors: validateRowForEndpoint(row.data, allData, existingEmails, i, endpoint, globalDomains),
+    },
+    // import state is intentionally preserved here
   }));
 }
 

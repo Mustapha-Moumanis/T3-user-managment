@@ -19,12 +19,12 @@ export function randomVerificationCode() {
 
 export function validateBase(body: Record<string, unknown>) {
   const email = String(body.email ?? '').trim().toLowerCase();
-  const fullName = String(body.fullName ?? body.full_name ?? '').trim();
+  const name = String(body.name ?? '').trim();
 
   if (!email) return err('email is required');
   if (!EMAIL_RE.test(email)) return err('invalid email format');
   if (createdEmails.has(email)) return err('user with this email already exists', 409);
-  if (!fullName) return err('fullName is required');
+  if (!name) return err('name is required');
 
   return null;
 }

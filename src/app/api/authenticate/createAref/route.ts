@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     message: 'AREF manager created successfully',
     user: {
       email,
-      full_name: body.full_name ?? body.fullName,
+      name: body.name,
       userType: 'RESPONSABLE_SI',
       codeAref,
     },

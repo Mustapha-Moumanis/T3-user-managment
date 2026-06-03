@@ -2,18 +2,20 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { Settings, UserPlus, ArrowRight } from "lucide-react";
+import { Settings, UserPlus, ArrowRight, Pencil } from "lucide-react";
 import { UploadMapping, type RawData } from "@/components/UploadMapping";
 import { ReviewStep } from "@/components/ReviewStep";
+import { EndpointEditPanel } from "@/components/EndpointEditPanel";
 import {
   applyMapping,
   autoDetectMapping,
   validateAllRowsForEndpoint,
   getFieldDefsForEndpoint,
-  type MappedRow,
+  type ProcessedRow,
   type Mapping,
 } from "@/lib/validation";
 import type { ProjectEndpoint } from "@/lib/schemas";
+import type { ProjectDto } from "@/lib/types";
 import { AddUserModal } from "@/components/AddUserModal";
 import { AppShell } from "@/components/shell/AppShell";
 import { Button } from "@/components/ui/button";
@@ -21,7 +23,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stepper } from "@/components/ui/stepper";
 
-export function ImportClient({ project }: { project: any }) {
+export function ImportClient({ project, globalAllowedDomains = [] }: { project: ProjectDto; globalAllowedDomains?: string[] }) {
   const router = useRouter();
   const endpoints: ProjectEndpoint[] = project.endpoints ?? [];
 
@@ -31,9 +33,11 @@ export function ImportClient({ project }: { project: any }) {
   );
   const [rawData, setRawData] = React.useState<RawData | null>(null);
   const [mapping, setMapping] = React.useState<Mapping>({});
-  const [rows, setRows] = React.useState<MappedRow[]>([]);
+  const [rows, setRows] = React.useState<ProcessedRow[]>([]);
   const [fields, setFields] = React.useState<string[]>([]);
   const [addUserOpen, setAddUserOpen] = React.useState(false);
+  const [editingEndpointId, setEditingEndpointId] = React.useState<string | null>(null);
+  const [localEndpoints, setLocalEndpoints] = React.useState<ProjectEndpoint[]>(endpoints);
 
   const handleFileLoad = (parsed: RawData | null, autoMap: Mapping) => {
     if (!parsed) { setRawData(null); setMapping({}); return; }
@@ -46,7 +50,7 @@ export function ImportClient({ project }: { project: any }) {
   const handleMappingNext = () => {
     if (!rawData || !selectedEndpoint) return;
     const mapped = applyMapping(rawData.rows, mapping);
-    const validated = validateAllRowsForEndpoint(mapped, selectedEndpoint);
+    const validated = validateAllRowsForEndpoint(mapped, selectedEndpoint, new Set(), globalAllowedDomains);
     const activeFields = Object.keys(mapping).filter((k) => mapping[k] && mapping[k] !== "_skip");
     setRows(validated);
     setFields(activeFields);
@@ -55,10 +59,21 @@ export function ImportClient({ project }: { project: any }) {
 
   const handleSelectEndpoint = (ep: ProjectEndpoint) => {
     setSelectedEndpoint(ep);
+    setEditingEndpointId(null);
     setRawData(null);
     setMapping({});
     setRows([]);
     setFields([]);
+  };
+
+  const handleEndpointSaved = (updated: ProjectEndpoint) => {
+    setLocalEndpoints((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+    setSelectedEndpoint(updated);
+    setEditingEndpointId(null);
+    // re-validate rows with updated endpoint if we already have data mapped
+    if (rows.length > 0) {
+      setRows(validateAllRowsForEndpoint(rows, updated, new Set(), globalAllowedDomains));
+    }
   };
 
   const breadcrumbs = [
@@ -111,53 +126,84 @@ export function ImportClient({ project }: { project: any }) {
       {/* ── Upload screen ── */}
       {screen === "upload" && (
         <>
-          {/* Endpoint selector — shown when multiple endpoints */}
-          {endpoints.length > 1 && (
-            <Card style={{ marginBottom: 16 }}>
-              <CardContent style={{ paddingTop: 20 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8, color: "hsl(var(--foreground))" }}>
+          {/* Endpoint selector */}
+          <Card style={{ marginBottom: 16 }}>
+            <CardContent style={{ paddingTop: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 500, color: "hsl(var(--foreground))" }}>
                   Destination endpoint
-                </div>
+                </span>
+                {localEndpoints.length === 1 && selectedEndpoint && (
+                  <Button variant="ghost" size="sm" onClick={() => setEditingEndpointId(selectedEndpoint.id)} style={{ fontSize: 12, gap: 4 }}>
+                    <Pencil size={12} /> Edit
+                  </Button>
+                )}
+              </div>
+
+              {localEndpoints.length > 1 && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                  {endpoints.map((ep) => {
-                    const reqCount = (ep.requiredFields?.length ?? 0);
+                  {localEndpoints.map((ep) => {
+                    const reqCount = ep.requiredFields?.length ?? 0;
                     const selected = selectedEndpoint?.id === ep.id;
                     return (
-                      <button
-                        key={ep.id}
-                        type="button"
-                        onClick={() => handleSelectEndpoint(ep)}
-                        style={{
-                          textAlign: "left",
-                          padding: 12,
-                          borderRadius: "calc(var(--radius) - 2px)",
-                          border: `1px solid ${selected ? "hsl(var(--brand))" : "hsl(var(--border))"}`,
-                          background: selected ? "hsl(var(--brand) / 0.06)" : "hsl(var(--background))",
-                          cursor: "pointer",
-                          transition: "all 120ms",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                          <span style={{ fontWeight: 500, fontSize: 14 }}>{ep.label || ep.path}</span>
-                          <span className="method method-POST">POST</span>
-                        </div>
-                        <div className="mono" style={{ fontSize: 12, color: "hsl(var(--muted-foreground))" }}>
-                          {ep.path}
-                        </div>
-                        {reqCount > 0 && (
-                          <div style={{ fontSize: 12, color: "hsl(var(--muted-foreground))", marginTop: 8 }}>
-                            {reqCount} required
+                      <div key={ep.id} style={{ position: "relative" }}>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectEndpoint(ep)}
+                          style={{
+                            width: "100%", textAlign: "left", padding: 12, paddingRight: 36,
+                            borderRadius: "calc(var(--radius) - 2px)",
+                            border: `1px solid ${selected ? "hsl(var(--brand))" : "hsl(var(--border))"}`,
+                            background: selected ? "hsl(var(--brand) / 0.06)" : "hsl(var(--background))",
+                            cursor: "pointer", transition: "all 120ms",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span style={{ fontWeight: 500, fontSize: 14 }}>{ep.label || ep.path}</span>
+                            <span className="method method-POST" style={{ fontSize: 11 }}>{ep.method ?? "POST"}</span>
                           </div>
-                        )}
-                      </button>
+                          <div className="mono" style={{ fontSize: 12, color: "hsl(var(--muted-foreground))" }}>{ep.path}</div>
+                          {reqCount > 0 && (
+                            <div style={{ fontSize: 12, color: "hsl(var(--muted-foreground))", marginTop: 8 }}>{reqCount} required</div>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          title="Edit endpoint"
+                          onClick={(e) => { e.stopPropagation(); setEditingEndpointId(ep.id); if (!selected) handleSelectEndpoint(ep); }}
+                          style={{
+                            position: "absolute", top: 8, right: 8, border: "none", background: "transparent",
+                            cursor: "pointer", color: "hsl(var(--muted-foreground))", padding: 4, borderRadius: 4,
+                          }}
+                        >
+                          <Pencil size={12} />
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              )}
 
-          {endpoints.length === 0 && (
+              {localEndpoints.length === 1 && selectedEndpoint && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                  border: "1px solid hsl(var(--border))", borderRadius: "calc(var(--radius) - 2px)",
+                  background: "hsl(var(--background))",
+                }}>
+                  <span className="method method-POST" style={{ fontSize: 11 }}>{selectedEndpoint.method ?? "POST"}</span>
+                  <span className="mono" style={{ fontSize: 13, flex: 1 }}>{selectedEndpoint.path}</span>
+                  {selectedEndpoint.label && (
+                    <span style={{ fontSize: 12, color: "hsl(var(--muted-foreground))" }}>{selectedEndpoint.label}</span>
+                  )}
+                  <Badge variant="outline" style={{ fontSize: 11 }}>
+                    {(selectedEndpoint.requiredFields?.length ?? 0) + (selectedEndpoint.optionalFields?.length ?? 0)} fields
+                  </Badge>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {localEndpoints.length === 0 && (
             <div
               style={{
                 padding: "48px 24px",
@@ -201,6 +247,9 @@ export function ImportClient({ project }: { project: any }) {
           endpoint={selectedEndpoint}
           mappedRows={rows}
           mapping={mapping}
+          globalAllowedDomains={globalAllowedDomains}
+          rawRows={rawData?.rows}
+          rawHeaders={rawData?.headers}
           onBack={() => setScreen("upload")}
           onRowUpdate={(updated) => setRows(updated)}
           onDeleteSelected={(updated) => setRows(updated)}
@@ -211,6 +260,18 @@ export function ImportClient({ project }: { project: any }) {
             setFields([]);
             setScreen("upload");
           }}
+        />
+      )}
+
+      {/* Endpoint edit dialog — rendered once, outside the upload/review screens */}
+      {editingEndpointId && (
+        <EndpointEditPanel
+          open={true}
+          onOpenChange={(o) => { if (!o) setEditingEndpointId(null); }}
+          endpoint={localEndpoints.find((e) => e.id === editingEndpointId) ?? localEndpoints[0]!}
+          projectId={project.id}
+          globalDomains={globalAllowedDomains}
+          onSave={handleEndpointSaved}
         />
       )}
 

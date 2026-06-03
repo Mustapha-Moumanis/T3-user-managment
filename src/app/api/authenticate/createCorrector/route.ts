@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     message: 'Corrector created successfully',
     user: {
       email,
-      fullName: body.fullName,
+      name: body.name,
       userType: 'CORRECTOR',
       codeCentre: body.codeCentre,
       matieres,

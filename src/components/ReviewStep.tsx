@@ -1,57 +1,125 @@
 'use client';
 
 import React from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle, Loader2, AlertTriangle } from 'lucide-react';
 import { ReviewTable } from './ReviewTable';
 import {
   validateAllRowsForEndpoint,
   buildEndpointPayload,
   buildAuthHeaders,
-  type MappedRow,
+  getFieldDefsForEndpoint,
+  rowsToCSV,
+  type ProcessedRow,
+  type RawRow,
 } from '@/lib/validation';
 import type { ProjectEndpoint } from '@/lib/schemas';
+import type { ProjectDto } from '@/lib/types';
 import { saveEndpointMapping } from '@/actions/projects';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 
-type Project = any;
-
-type ImportMode = 'dryrun' | 'valid_only' | 'full';
 type Phase = 'review' | 'running' | 'done';
 interface Summary { successCount: number; failedCount: number; skippedCount: number; total: number; elapsed?: number; }
 
 export interface ReviewStepProps {
-  rows: MappedRow[];
+  rows: ProcessedRow[];
   fields: string[];
-  config: Project;
+  config: ProjectDto;
   endpoint: ProjectEndpoint;
-  mappedRows: MappedRow[];
+  mappedRows: ProcessedRow[];
   mapping?: Record<string, string | undefined>;
+  globalAllowedDomains?: string[];
+  /** Required for bulk-file endpoints — the original unparsed rows with source column names */
+  rawRows?: RawRow[];
+  rawHeaders?: string[];
   onBack: () => void;
-  onRowUpdate: (updated: MappedRow[]) => void;
-  onDeleteSelected: (updated: MappedRow[]) => void;
+  onRowUpdate: (updated: ProcessedRow[]) => void;
+  onDeleteSelected: (updated: ProcessedRow[]) => void;
   onStartNew: () => void;
 }
 
-export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate, onDeleteSelected, onStartNew, mapping }: ReviewStepProps) {
-  const [importMode, setImportMode] = React.useState<ImportMode>('valid_only');
+export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate, onDeleteSelected, onStartNew, mapping, globalAllowedDomains = [], rawRows, rawHeaders }: ReviewStepProps) {
+  const [forceIncludeErrors, setForceIncludeErrors] = React.useState(false);
   const [filter, setFilter] = React.useState<'all' | 'valid' | 'errors' | 'success' | 'failed'>('all');
   const [phase, setPhase] = React.useState<Phase>('review');
   const [progress, setProgress] = React.useState(0);
   const [currentRow, setCurrentRow] = React.useState(0);
-  const [importedRows, setImportedRows] = React.useState<MappedRow[]>(rows);
+  const [importedRows, setImportedRows] = React.useState<ProcessedRow[]>(rows);
   const [summary, setSummary] = React.useState<Summary | null>(null);
   const [urlError, setUrlError] = React.useState<string | null>(null);
 
+  const abortRef = React.useRef<AbortController | null>(null);
+
+  React.useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
+
   React.useEffect(() => { setImportedRows(rows); }, [rows]);
 
-  const errorRows = importedRows.filter((r) => Object.keys(r._errors ?? {}).length > 0);
-  const validRows = importedRows.filter((r) => Object.keys(r._errors ?? {}).length === 0);
+  const errorRows = importedRows.filter((r) => Object.keys(r.validation.errors).length > 0);
+  const validRows = importedRows.filter((r) => Object.keys(r.validation.errors).length === 0);
+  const toImportCount = forceIncludeErrors ? importedRows.length : validRows.length;
 
-  const willImportCount = importMode === 'dryrun' ? 0 : importMode === 'valid_only' ? validRows.length : importedRows.length;
+  // Build field labels from endpoint definition for ReviewTable
+  const fieldLabels = React.useMemo(() => {
+    const defs = getFieldDefsForEndpoint(endpoint);
+    return Object.fromEntries(defs.map((f) => [f.key, f.label]));
+  }, [endpoint]);
+
+  const handleBulkImport = async () => {
+    setUrlError(null);
+    if (!config?.baseUrl?.trim()) {
+      setUrlError('Project Base URL is not configured — go to Settings to add it before importing.');
+      return;
+    }
+    if (!rawHeaders || !rawRows) {
+      setUrlError('Original file data is missing — please go back and re-upload the file.');
+      return;
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setPhase('running');
+    setProgress(50);
+    const startTime = Date.now();
+
+    const csv = rowsToCSV(rawHeaders, rawRows);
+    const formData = new FormData();
+    formData.append('file', new Blob([csv], { type: 'text/csv' }), 'import.csv');
+
+    try {
+      const res = await fetch(`${config.baseUrl}${endpoint.path}`, {
+        method: endpoint.method ?? 'POST',
+        headers: (() => {
+          const h = buildAuthHeaders(config?.auth);
+          delete h['Content-Type']; // let browser set multipart boundary
+          return h;
+        })(),
+        body: formData,
+        signal: controller.signal,
+      });
+
+      const elapsed = Math.round((Date.now() - startTime) / 100) / 10;
+      setProgress(100);
+
+      if (res.ok) {
+        setSummary({ successCount: rawRows.length, failedCount: 0, skippedCount: 0, total: rawRows.length, elapsed });
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setSummary({ successCount: 0, failedCount: rawRows.length, skippedCount: 0, total: rawRows.length, elapsed });
+        setUrlError(errData.message || `Server error: HTTP ${res.status}`);
+      }
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === 'AbortError')) {
+        setUrlError(e instanceof Error ? e.message : 'Network error');
+      }
+      setSummary({ successCount: 0, failedCount: rawRows.length, skippedCount: 0, total: rawRows.length });
+    }
+
+    setPhase('done');
+  };
 
   const handleImport = async () => {
     setUrlError(null);
@@ -59,17 +127,20 @@ export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate
       setUrlError('Project Base URL is not configured — go to Settings to add it before importing.');
       return;
     }
-    const toImport = importMode === 'valid_only' ? validRows : importedRows;
+    const toImport = forceIncludeErrors ? importedRows : validRows;
     if (toImport.length === 0) return;
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     setPhase('running');
     setProgress(0);
     setCurrentRow(0);
     const startTime = Date.now();
 
-    const results: MappedRow[] = importedRows.map((r) =>
-      importMode === 'valid_only' && Object.keys(r._errors ?? {}).length > 0
-        ? { ...r, _status: 'skipped' as const }
+    const results: ProcessedRow[] = importedRows.map((r) =>
+      !forceIncludeErrors && Object.keys(r.validation.errors).length > 0
+        ? { ...r, import: { status: 'skipped' as const } }
         : { ...r }
     );
     const headers = buildAuthHeaders(config?.auth);
@@ -80,24 +151,22 @@ export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate
       const rowIdx = results.findIndex((r) => r._id === row._id);
       if (rowIdx === -1) continue;
 
-      if (importMode === 'dryrun') {
-        results[rowIdx] = { ...results[rowIdx]!, _status: 'skipped' };
-      } else {
-        try {
-          const res = await fetch(`${config.baseUrl}${endpoint.path}`, {
-            method: endpoint.method ?? 'POST',
-            headers,
-            body: JSON.stringify(buildEndpointPayload(row, endpoint)),
-          });
-          if (res.ok) {
-            results[rowIdx] = { ...results[rowIdx]!, _status: 'success', _errorMsg: null };
-          } else {
-            const errData = await res.json().catch(() => ({}));
-            results[rowIdx] = { ...results[rowIdx]!, _status: 'failed', _errorMsg: errData.message || `HTTP ${res.status}` };
-          }
-        } catch (e) {
-          results[rowIdx] = { ...results[rowIdx]!, _status: 'failed', _errorMsg: e instanceof Error ? e.message : 'Network error' };
+      try {
+        const res = await fetch(`${config.baseUrl}${endpoint.path}`, {
+          method: endpoint.method ?? 'POST',
+          headers,
+          body: JSON.stringify(buildEndpointPayload(row, endpoint)),
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          results[rowIdx] = { ...results[rowIdx]!, import: { status: 'success', errorMessage: null } };
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          results[rowIdx] = { ...results[rowIdx]!, import: { status: 'server-error', errorMessage: errData.message || `HTTP ${res.status}` } };
         }
+      } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') break;
+        results[rowIdx] = { ...results[rowIdx]!, import: { status: 'server-error', errorMessage: e instanceof Error ? e.message : 'Network error' } };
       }
 
       setProgress(Math.round(((i + 1) / toImport.length) * 100));
@@ -106,25 +175,29 @@ export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate
     }
 
     const elapsed = Math.round((Date.now() - startTime) / 100) / 10;
-    const successCount = results.filter((r) => r._status === 'success').length;
-    const failedCount = results.filter((r) => r._status === 'failed').length;
-    const skippedCount = results.filter((r) => r._status === 'skipped').length;
+    const successCount = results.filter((r) => r.import.status === 'success').length;
+    const failedCount = results.filter((r) => r.import.status === 'server-error').length;
+    const skippedCount = results.filter((r) => r.import.status === 'skipped').length;
     setSummary({ successCount, failedCount, skippedCount, total: importedRows.length, elapsed });
     setImportedRows([...results]);
     setPhase('done');
 
-    if (successCount > 0 && mapping && config?._id) {
+    if (successCount > 0 && mapping && config?.id) {
       const cleanMapping: Record<string, string> = {};
       for (const [k, v] of Object.entries(mapping)) {
         if (v && v !== '_skip') cleanMapping[k] = v;
       }
-      try { await saveEndpointMapping(String(config._id), endpoint.id, cleanMapping); } catch { /* non-critical */ }
+      try { await saveEndpointMapping(config.id, endpoint.id, cleanMapping); } catch { /* non-critical */ }
     }
   };
 
   const handleRetryFailed = async () => {
-    const failed = importedRows.filter((r) => r._status === 'failed');
+    const failed = importedRows.filter((r) => r.import.status === 'server-error');
     if (failed.length === 0) return;
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setPhase('running');
     setProgress(0);
     const results = [...importedRows];
@@ -137,22 +210,25 @@ export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate
       if (rowIdx === -1) continue;
       try {
         const res = await fetch(`${config.baseUrl}${endpoint.path}`, {
-          method: endpoint.method ?? 'POST', headers,
+          method: endpoint.method ?? 'POST',
+          headers,
           body: JSON.stringify(buildEndpointPayload(row, endpoint)),
+          signal: controller.signal,
         });
         results[rowIdx] = res.ok
-          ? { ...results[rowIdx]!, _status: 'success', _errorMsg: null }
-          : { ...results[rowIdx]!, _status: 'failed', _errorMsg: (await res.json().catch(() => ({}))).message || `HTTP ${res.status}` };
+          ? { ...results[rowIdx]!, import: { status: 'success', errorMessage: null } }
+          : { ...results[rowIdx]!, import: { status: 'server-error', errorMessage: (await res.json().catch(() => ({}))).message || `HTTP ${res.status}` } };
       } catch (e) {
-        results[rowIdx] = { ...results[rowIdx]!, _status: 'failed', _errorMsg: e instanceof Error ? e.message : 'Network error' };
+        if (e instanceof DOMException && e.name === 'AbortError') break;
+        results[rowIdx] = { ...results[rowIdx]!, import: { status: 'server-error', errorMessage: e instanceof Error ? e.message : 'Network error' } };
       }
       setProgress(Math.round(((i + 1) / failed.length) * 100));
       setImportedRows([...results]);
     }
 
-    const successCount = results.filter((r) => r._status === 'success').length;
-    const failedCount = results.filter((r) => r._status === 'failed').length;
-    const skippedCount = results.filter((r) => r._status === 'skipped').length;
+    const successCount = results.filter((r) => r.import.status === 'success').length;
+    const failedCount = results.filter((r) => r.import.status === 'server-error').length;
+    const skippedCount = results.filter((r) => r.import.status === 'skipped').length;
     setSummary({ successCount, failedCount, skippedCount, total: importedRows.length });
     setImportedRows([...results]);
     setPhase('done');
@@ -167,13 +243,12 @@ export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate
         </div>
       )}
 
-      {/* Summary stat strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+      {/* Summary stat strip — 3 cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
         {[
           { label: 'Total rows', value: importedRows.length, color: undefined },
-          { label: 'Valid', value: validRows.length, color: 'hsl(var(--success))' },
-          { label: 'Errors', value: errorRows.length, color: 'hsl(var(--destructive))' },
-          { label: 'Will import', value: willImportCount, color: 'hsl(var(--brand))' },
+          { label: 'Ready to import', value: validRows.length, color: 'hsl(var(--success))' },
+          { label: 'Have issues', value: errorRows.length, color: errorRows.length > 0 ? 'hsl(var(--destructive))' : 'hsl(var(--muted-foreground))' },
         ].map((s, i) => (
           <Card key={i} style={{ padding: 16 }}>
             <div style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))', marginBottom: 4 }}>{s.label}</div>
@@ -184,22 +259,22 @@ export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate
         ))}
       </div>
 
-      {/* Controls row: mode + filter */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>Mode</span>
-          <Tabs value={importMode} onValueChange={(v) => setImportMode(v as ImportMode)}>
-            <TabsList>
-              <TabsTrigger value="dryrun">Dry run</TabsTrigger>
-              <TabsTrigger value="valid_only">Valid only</TabsTrigger>
-              <TabsTrigger value="full">Full import</TabsTrigger>
-            </TabsList>
-          </Tabs>
+      {/* Warning banner when rows have issues */}
+      {phase === 'review' && errorRows.length > 0 && (
+        <div style={{
+          marginBottom: 16, padding: '10px 14px',
+          borderRadius: 'calc(var(--radius) - 2px)',
+          border: '1px solid hsl(var(--warning, 38 92% 50%) / 0.35)',
+          background: 'hsl(var(--warning, 38 92% 50%) / 0.07)',
+          display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13,
+        }}>
+          <AlertTriangle size={16} style={{ color: 'hsl(var(--warning, 38 92% 50%))', flexShrink: 0, marginTop: 1 }} />
+          <span>
+            <strong>{errorRows.length} row{errorRows.length > 1 ? 's have' : ' has'} validation errors</strong> and will be skipped.{' '}
+            Click any cell to edit inline, or select and delete rows to exclude them.
+          </span>
         </div>
-        {phase === 'review' && errorRows.length > 0 && (
-          <Badge variant="warning">⚠ {errorRows.length} error{errorRows.length > 1 ? 's' : ''} need attention</Badge>
-        )}
-      </div>
+      )}
 
       {/* Running phase */}
       {phase === 'running' && (
@@ -208,7 +283,7 @@ export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Loader2 size={16} className="spin" style={{ color: 'hsl(var(--brand))' }} />
               <span style={{ fontWeight: 500, fontSize: 14 }}>
-                {importMode === 'dryrun' ? 'Validating' : 'Importing'}… {currentRow} of {importedRows.length}
+                Importing… {currentRow} of {toImportCount}
               </span>
             </div>
             <span className="mono" style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>{progress}%</span>
@@ -251,7 +326,8 @@ export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate
       <ReviewTable
         rows={importedRows}
         fields={fields}
-        onRowUpdate={(id, field, val) => onRowUpdate(validateAllRowsForEndpoint(importedRows.map((r) => (r._id === id ? { ...r, [field]: val } : r)), endpoint))}
+        fieldLabels={fieldLabels}
+        onRowUpdate={(id, field, val) => onRowUpdate(validateAllRowsForEndpoint(importedRows.map((r) => (r._id === id ? { ...r, data: { ...r.data, [field]: val } } : r)), endpoint, new Set(), globalAllowedDomains))}
         onDeleteSelected={(ids) => onDeleteSelected(importedRows.filter((r) => !ids.includes(r._id)))}
         filter={filter}
         onFilterChange={setFilter}
@@ -264,15 +340,29 @@ export function ReviewStep({ rows, fields, config, endpoint, onBack, onRowUpdate
           <ArrowLeft size={14} /> Back to mapping
         </Button>
 
-        {phase === 'review' && (
-          <Button size="lg" onClick={handleImport} disabled={importedRows.length === 0}>
-            {importMode === 'dryrun'
-              ? 'Run dry validation'
-              : importMode === 'valid_only'
-              ? `Import ${validRows.length} valid rows`
-              : `Import all ${importedRows.length} rows`}
+        {phase === 'review' && endpoint.importMode === 'bulk-file' && (
+          <Button size="lg" onClick={handleBulkImport} disabled={(rawRows?.length ?? 0) === 0}>
+            Send CSV file ({rawRows?.length ?? 0} rows)
             <ArrowRight size={14} />
           </Button>
+        )}
+
+        {phase === 'review' && endpoint.importMode !== 'bulk-file' && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+            <Button size="lg" onClick={handleImport} disabled={toImportCount === 0}>
+              Import {toImportCount} user{toImportCount !== 1 ? 's' : ''}
+              <ArrowRight size={14} />
+            </Button>
+            {errorRows.length > 0 && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'hsl(var(--muted-foreground))', cursor: 'pointer', userSelect: 'none' }}>
+                <Checkbox
+                  checked={forceIncludeErrors}
+                  onCheckedChange={(v) => setForceIncludeErrors(Boolean(v))}
+                />
+                Also import {errorRows.length} row{errorRows.length > 1 ? 's' : ''} with errors
+              </label>
+            )}
+          </div>
         )}
       </div>
     </div>

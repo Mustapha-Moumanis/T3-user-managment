@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     message: 'Chef de correction created successfully',
     user: {
       email,
-      fullName: body.fullName,
+      name: body.name,
       userType: 'CHEF_CORRECTION',
       codeCentre,
       codeAref,

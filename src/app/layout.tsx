@@ -18,7 +18,7 @@ const earlyTheme = `(()=>{
   try {
     const t = localStorage.getItem('uim.theme') || 'light';
     document.documentElement.setAttribute('data-theme', t);
-    const a = localStorage.getItem('uim.accent') || 'indigo';
+    const a = localStorage.getItem('uim.accent') || 'blue';
     document.documentElement.setAttribute('data-accent', a);
   } catch(_) {}
 })();`;
@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html
       lang="en"
       data-theme="light"
-      data-accent="indigo"
+      data-accent="blue"
       suppressHydrationWarning
       className={inter.variable}
     >

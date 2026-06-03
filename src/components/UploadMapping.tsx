@@ -230,14 +230,14 @@ export function UploadMapping({
                 </thead>
                 <tbody>
                   {previewRows.map((row, i) => {
-                    const mapped = applyMapping([row], mapping)[0] as Record<string, unknown>;
+                    const mapped = applyMapping([row], mapping)[0]!;
                     return (
                       <tr key={i} style={{ borderBottom: i < previewRows.length - 1 ? '1px solid hsl(var(--border))' : 'none' }}>
                         {Object.keys(mapping)
                           .filter((k) => mapping[k] && mapping[k] !== '_skip')
                           .map((field) => (
                             <td key={field} style={{ padding: '10px 14px', fontSize: 14 }}>
-                              {mapped[field] != null ? String(mapped[field]) : <span style={{ color: 'hsl(var(--muted-foreground))' }}>—</span>}
+                              {mapped.data[field] != null ? String(mapped.data[field]) : <span style={{ color: 'hsl(var(--muted-foreground))' }}>—</span>}
                             </td>
                           ))}
                       </tr>

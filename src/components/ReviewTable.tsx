@@ -2,36 +2,22 @@
 
 import React from 'react';
 import { Check, X, AlertCircle } from 'lucide-react';
-import { type MappedRow } from '@/lib/validation';
+import { type ProcessedRow } from '@/lib/validation';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 
-export const FIELD_LABELS: Record<string, string> = {
-  email: 'Email',
-  name: 'Full Name',
-  codeCentre: 'Code Centre',
-  codeAref: 'Code AREF',
-  matieres: 'Matières',
-  first_name: 'First Name',
-  last_name: 'Last Name',
-  role: 'Role',
-  phone: 'Phone',
-  department: 'Department',
-  external_id: 'External ID',
-};
-
-function StatusBadge({ errors, status, errorMsg }: {
-  errors: Record<string, string> | undefined;
-  status: MappedRow['_status'];
-  errorMsg?: string | null;
+function StatusBadge({ errors, importStatus, errorMessage }: {
+  errors: Record<string, string>;
+  importStatus: ProcessedRow['import']['status'];
+  errorMessage?: string | null;
 }) {
-  if (status === 'success') return <Badge variant="success"><Check className="h-2.5 w-2.5" strokeWidth={3} /> Imported</Badge>;
-  if (status === 'failed') return <Badge variant="destructive" title={errorMsg || 'Import failed'}><AlertCircle className="h-2.5 w-2.5" /> Failed</Badge>;
-  if (status === 'skipped') return <Badge variant="secondary">Skipped</Badge>;
-  const errCount = Object.keys(errors ?? {}).length;
+  if (importStatus === 'success') return <Badge variant="success"><Check className="h-2.5 w-2.5" strokeWidth={3} /> Imported</Badge>;
+  if (importStatus === 'server-error') return <Badge variant="destructive" title={errorMessage || 'Import failed'}><AlertCircle className="h-2.5 w-2.5" /> Failed</Badge>;
+  if (importStatus === 'skipped') return <Badge variant="secondary">Skipped</Badge>;
+  const errCount = Object.keys(errors).length;
   if (errCount === 0) return <Badge variant="success"><Check className="h-2.5 w-2.5" strokeWidth={3} /> Valid</Badge>;
   return <Badge variant="destructive"><AlertCircle className="h-2.5 w-2.5" /> {errCount} error{errCount > 1 ? 's' : ''}</Badge>;
 }
@@ -90,16 +76,17 @@ function EditableCell({ value, error, field, onSave, readOnly }: {
 type FilterType = 'all' | 'valid' | 'errors' | 'success' | 'failed';
 
 export interface ReviewTableProps {
-  rows: MappedRow[];
+  rows: ProcessedRow[];
   fields: string[];
   onRowUpdate: (rowId: string, field: string, value: string) => void;
   onDeleteSelected: (ids: string[]) => void;
   filter: FilterType;
   onFilterChange: (filter: FilterType) => void;
   showImportStatus: boolean;
+  fieldLabels?: Record<string, string>;
 }
 
-export function ReviewTable({ rows, fields, onRowUpdate, onDeleteSelected, filter, onFilterChange, showImportStatus }: ReviewTableProps) {
+export function ReviewTable({ rows, fields, onRowUpdate, onDeleteSelected, filter, onFilterChange, showImportStatus, fieldLabels = {} }: ReviewTableProps) {
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [sortField, setSortField] = React.useState<string | null>(null);
   const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('asc');
@@ -110,22 +97,22 @@ export function ReviewTable({ rows, fields, onRowUpdate, onDeleteSelected, filte
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r._id)));
   const toggleRow = (id: string) => { const n = new Set(selected); n.has(id) ? n.delete(id) : n.add(id); setSelected(n); };
 
-  const errorCount = rows.filter((r) => Object.keys(r._errors ?? {}).length > 0).length;
+  const errorCount = rows.filter((r) => Object.keys(r.validation.errors).length > 0).length;
   const validCount = rows.length - errorCount;
 
   const sorted = [...rows].sort((a, b) => {
     if (!sortField) return 0;
-    const av = (a as unknown as Record<string, string>)[sortField] ?? '';
-    const bv = (b as unknown as Record<string, string>)[sortField] ?? '';
+    const av = a.data[sortField] ?? '';
+    const bv = b.data[sortField] ?? '';
     return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
   });
 
   const filtered = sorted.filter((r) => {
     if (!filter || filter === 'all') return true;
-    if (filter === 'errors') return Object.keys(r._errors ?? {}).length > 0;
-    if (filter === 'valid') return Object.keys(r._errors ?? {}).length === 0;
-    if (filter === 'success') return r._status === 'success';
-    if (filter === 'failed') return r._status === 'failed';
+    if (filter === 'errors') return Object.keys(r.validation.errors).length > 0;
+    if (filter === 'valid') return Object.keys(r.validation.errors).length === 0;
+    if (filter === 'success') return r.import.status === 'success';
+    if (filter === 'failed') return r.import.status === 'server-error';
     return true;
   });
 
@@ -173,7 +160,7 @@ export function ReviewTable({ rows, fields, onRowUpdate, onDeleteSelected, filte
                     onClick={() => { if (sortField === field) setSortDir((d) => d === 'asc' ? 'desc' : 'asc'); else { setSortField(field); setSortDir('asc'); } }}
                     style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, fontWeight: 500, color: 'hsl(var(--muted-foreground))', borderBottom: '1px solid hsl(var(--border))', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
                   >
-                    {FIELD_LABELS[field] ?? field}
+                    {fieldLabels[field] ?? field}
                     {sortField === field && <span style={{ marginLeft: 4, opacity: 0.6 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>}
                   </th>
                 ))}
@@ -181,8 +168,8 @@ export function ReviewTable({ rows, fields, onRowUpdate, onDeleteSelected, filte
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row) => {
-                const hasError = Object.keys(row._errors ?? {}).length > 0;
+              {filtered.map((row, i) => {
+                const hasError = Object.keys(row.validation.errors).length > 0;
                 const isSelected = selected.has(row._id);
                 return (
                   <tr
@@ -190,8 +177,8 @@ export function ReviewTable({ rows, fields, onRowUpdate, onDeleteSelected, filte
                     style={{
                       borderBottom: '1px solid hsl(var(--border))',
                       background:
-                        row._status === 'success' ? 'hsl(var(--success) / 0.04)' :
-                        row._status === 'failed' ? 'hsl(var(--destructive) / 0.05)' :
+                        row.import.status === 'success' ? 'hsl(var(--success) / 0.04)' :
+                        row.import.status === 'server-error' ? 'hsl(var(--destructive) / 0.05)' :
                         hasError ? 'hsl(var(--destructive) / 0.04)' :
                         isSelected ? 'hsl(var(--brand) / 0.04)' : 'transparent',
                     }}
@@ -200,24 +187,24 @@ export function ReviewTable({ rows, fields, onRowUpdate, onDeleteSelected, filte
                       <Checkbox checked={isSelected} onCheckedChange={() => toggleRow(row._id)} />
                     </td>
                     <td style={{ padding: '10px 14px', color: 'hsl(var(--muted-foreground))', fontSize: 12, fontFamily: 'ui-monospace, monospace' }}>
-                      {rows.indexOf(row) + 1}
+                      {i + 1}
                     </td>
                     <td style={{ padding: '10px 14px' }}>
-                      <StatusBadge errors={row._errors} status={row._status} errorMsg={row._errorMsg} />
+                      <StatusBadge errors={row.validation.errors} importStatus={row.import.status} errorMessage={row.import.errorMessage} />
                     </td>
                     {fields.map((field) => (
                       <td key={field} style={{ padding: '5px 8px', minWidth: 120 }}>
                         <EditableCell
-                          value={(row as unknown as Record<string, string>)[field]}
-                          error={row._errors?.[field]}
+                          value={row.data[field]}
+                          error={row.validation.errors[field]}
                           field={field}
-                          readOnly={!!row._status}
+                          readOnly={row.import.status !== 'pending'}
                           onSave={(val) => { onRowUpdate(row._id, field, val); setSelected((s) => new Set(s)); }}
                         />
                       </td>
                     ))}
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>
-                      {row._errorMsg || ''}
+                      {row.import.errorMessage ?? ''}
                     </td>
                   </tr>
                 );

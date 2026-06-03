@@ -37,6 +37,67 @@ function colorKeyFromHex(hex: string): string | null {
 
 type FieldDef = { key: string; label: string; type: "string" | "number" | "array" };
 
+function DomainTagInput({ domains, onChange }: { domains: string[]; onChange: (d: string[]) => void }) {
+  const [draft, setDraft] = React.useState("");
+
+  const commit = () => {
+    const val = draft.trim().toLowerCase().replace(/^@/, "");
+    if (val && !domains.includes(val)) onChange([...domains, val]);
+    setDraft("");
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4,
+        minHeight: 32, padding: "3px 8px",
+        border: "1px solid hsl(var(--input))", borderRadius: "calc(var(--radius) - 2px)",
+        background: "hsl(var(--background))", cursor: "text",
+      }}
+      onClick={(e) => (e.currentTarget.querySelector("input") as HTMLInputElement)?.focus()}
+    >
+      {domains.map((d) => (
+        <span
+          key={d}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            padding: "1px 6px", borderRadius: 4,
+            background: "hsl(var(--brand) / 0.1)", border: "1px solid hsl(var(--brand) / 0.25)",
+            fontSize: 12, fontFamily: "ui-monospace, monospace", color: "hsl(var(--foreground))",
+          }}
+        >
+          {d}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onChange(domains.filter((x) => x !== d)); }}
+            style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, lineHeight: 1, color: "hsl(var(--muted-foreground))", fontSize: 14 }}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commit(); }
+          if (e.key === "Backspace" && draft === "" && domains.length > 0) {
+            onChange(domains.slice(0, -1));
+          }
+        }}
+        onBlur={commit}
+        placeholder={domains.length === 0 ? "Type a domain and press Enter  (e.g. men.gov.ma)" : ""}
+        style={{
+          border: "none", outline: "none", background: "transparent",
+          fontSize: 12, fontFamily: "ui-monospace, monospace",
+          minWidth: 180, flex: 1,
+          color: "hsl(var(--foreground))",
+        }}
+      />
+    </div>
+  );
+}
+
 const FieldEditor = ({
   endpointId, fieldType, label, endpoints, onAdd, onUpdate, onRemove,
 }: {
@@ -102,10 +163,10 @@ export function ProjectConfig({
 
   const resolveInitialColor = () => {
     const c = initial?.color;
-    if (!c) return "indigo";
+    if (!c) return "blue";
     if (ACCENT_COLORS.some((a) => a.key === c)) return c;
     const key = colorKeyFromHex(c);
-    return key ?? "indigo";
+    return key ?? "blue";
   };
 
   const [color, setColor] = useState(resolveInitialColor());
@@ -135,6 +196,15 @@ export function ProjectConfig({
   // Endpoint handlers
   const handleEpChange = (id: string, field: string, val: string) =>
     setData((d) => ({ ...d, endpoints: (d.endpoints || []).map((e) => (e.id === id ? { ...e, [field]: val } : e)) }));
+
+  const handleEpDomainsChange = (id: string, domains: string[]) => {
+    setData((d) => ({
+      ...d,
+      endpoints: (d.endpoints || []).map((e) =>
+        e.id === id ? { ...e, emailDomainAllowlist: domains.length > 0 ? domains : undefined } : e
+      ),
+    }));
+  };
 
   const addEndpoint = () => {
     const id = Math.random().toString(36).substring(7);
@@ -212,7 +282,7 @@ export function ProjectConfig({
   };
 
   const STEPS = ["Info", "API & Endpoints", "Authentication", "Review"];
-  const dot = ACCENT_KEY_TO_HEX[color] ?? "#6366f1";
+  const dot = ACCENT_KEY_TO_HEX[color] ?? "#3b82f6";
 
   return (
     <div style={{ width: "100%" }}>
@@ -332,6 +402,15 @@ export function ProjectConfig({
                         </Button>
                       </div>
                       <div style={{ marginTop: 8, borderTop: "1px solid hsl(var(--border))", paddingTop: 8 }}>
+                        <div className="flex flex-col gap-1" style={{ marginBottom: 10 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "hsl(var(--muted-foreground))" }}>
+                            Allowed email domains
+                          </span>
+                          <DomainTagInput
+                            domains={ep.emailDomainAllowlist ?? []}
+                            onChange={(domains) => handleEpDomainsChange(ep.id, domains)}
+                          />
+                        </div>
                         <FieldEditor endpointId={ep.id} fieldType="requiredFields" label="Required Fields" endpoints={data.endpoints || []} onAdd={addField} onUpdate={updateField} onRemove={removeField} />
                         <FieldEditor endpointId={ep.id} fieldType="optionalFields" label="Optional Fields" endpoints={data.endpoints || []} onAdd={addField} onUpdate={updateField} onRemove={removeField} />
                       </div>

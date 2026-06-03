@@ -27,7 +27,7 @@ export function Navbar({ breadcrumbs }: NavbarProps) {
       }}
     >
       {/* Logo */}
-      <Link href="/projects" className="flex items-center gap-2 no-underline">
+      <Link href="/" className="flex items-center gap-2 no-underline">
         <div
           style={{
             width: 28,
